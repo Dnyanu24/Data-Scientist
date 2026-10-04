@@ -10,6 +10,12 @@ import {
 } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import {
+  Upload, Search, Fingerprint, Sparkles, Target,
+  SlidersHorizontal, Bot, BarChart3, Rocket,
+  Zap, TrendingUp, ShieldCheck, RefreshCw, ArrowLeft,
+  ArrowRight, Play, Check, Plus, X, FlaskConical,
+} from 'lucide-react';
+import {
   BarChart,
   Bar,
   XAxis,
@@ -25,15 +31,15 @@ import {
 } from 'recharts';
 
 const PHASES = [
-  { key: 'created', label: '1. Ingestion', icon: '📤' },
-  { key: 'uploaded', label: '2. Understanding', icon: '🔍' },
-  { key: 'profiled', label: '3. Fingerprint', icon: '🧬' },
-  { key: 'fingerprinted', label: '4. Meta-Learn', icon: '💡' },
-  { key: 'recommended', label: '5. Recommend', icon: '🎯' },
-  { key: 'preprocessing', label: '6. Preprocess', icon: '⚙️' },
-  { key: 'training', label: '7. Training', icon: '🤖' },
-  { key: 'trained', label: '8. Evaluation', icon: '📊' },
-  { key: 'deployed', label: '9. Deployed', icon: '🚀' },
+  { key: 'created',       label: '1. Ingestion',   IconComp: Upload },
+  { key: 'uploaded',      label: '2. Understanding', IconComp: Search },
+  { key: 'profiled',      label: '3. Fingerprint', IconComp: Fingerprint },
+  { key: 'fingerprinted', label: '4. Meta-Learn',  IconComp: Sparkles },
+  { key: 'recommended',  label: '5. Recommend',   IconComp: Target },
+  { key: 'preprocessing', label: '6. Preprocess',  IconComp: SlidersHorizontal },
+  { key: 'training',      label: '7. Training',    IconComp: Bot },
+  { key: 'trained',       label: '8. Evaluation',  IconComp: BarChart3 },
+  { key: 'deployed',      label: '9. Deployed',    IconComp: Rocket },
 ];
 
 const PHASE_ORDER = PHASES.map((p) => p.key);

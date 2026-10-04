@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { experimentsApi, deploymentsApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { ArrowLeft, Rocket, Trophy, BarChart3 } from 'lucide-react';
 
 export default function ModelDetailPage() {
   const { projectId, modelId } = useParams<{ projectId: string; modelId: string }>();
@@ -46,20 +47,26 @@ export default function ModelDetailPage() {
     <div className="page-body">
       <div className="page-header">
         <div className="flex items-center gap-4" style={{ marginBottom: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/projects/${projectId}`)}>← Back</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/projects/${projectId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <ArrowLeft size={16} /> Back
+          </button>
           <h1 className="page-title">{model.name as string}</h1>
           <span className="badge badge-accent">{model.algorithm_name as string}</span>
-          {model.is_best && <span className="badge badge-warning">🏆 Champion</span>}
+          {model.is_best && (
+            <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Trophy size={14} /> Champion
+            </span>
+          )}
         </div>
         <p className="page-desc">Stage {model.training_stage as number} · {model.status as string}</p>
       </div>
 
       <div className="flex gap-2" style={{ marginBottom: 20 }}>
-        <button className="btn btn-success" onClick={deployModel} disabled={deploying}>
-          {deploying ? <span className="spinner" /> : '🚀'} Deploy Model
+        <button className="btn btn-success" onClick={deployModel} disabled={deploying} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {deploying ? <span className="spinner" /> : <Rocket size={16} />} Deploy Model
         </button>
-        <button className="btn btn-secondary" onClick={() => experimentsApi.setBest(Number(modelId)).then(() => addToast('Set as champion', 'success'))}>
-          🏆 Set Champion
+        <button className="btn btn-secondary" onClick={() => experimentsApi.setBest(Number(modelId)).then(() => addToast('Set as champion', 'success'))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Trophy size={16} /> Set Champion
         </button>
       </div>
 
@@ -106,7 +113,7 @@ export default function ModelDetailPage() {
           <div className="card-title" style={{ marginBottom: 20 }}>Feature Importance</div>
           {fiEntries.length === 0 ? (
             <div className="empty-state" style={{ padding: 32 }}>
-              <div className="empty-icon">📊</div>
+              <div className="empty-icon"><BarChart3 size={32} /></div>
               <div className="empty-title">Not available</div>
             </div>
           ) : (
@@ -143,7 +150,7 @@ export default function ModelDetailPage() {
           )}
           {!evaluation?.classification_report && !evaluation?.confusion_matrix && (
             <div className="empty-state">
-              <div className="empty-icon">📊</div>
+              <div className="empty-icon"><BarChart3 size={32} /></div>
               <div className="empty-title">No evaluation data</div>
             </div>
           )}

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { monitoringApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ArrowLeft, FlaskConical, BarChart2, Zap, TrendingUp, ShieldCheck } from 'lucide-react';
 
 export default function MonitoringPage() {
   const { deploymentId } = useParams<{ deploymentId?: string }>();
@@ -42,12 +43,12 @@ export default function MonitoringPage() {
     try {
       const r = await monitoringApi.checkDrift(idToUse);
       addToast(
-        r.data.overall_drift ? '⚠️ Statistical drift detected!' : '✅ No significant drift detected across features',
+        r.data.overall_drift ? 'Statistical drift detected!' : 'No significant drift detected across features',
         r.data.overall_drift ? 'error' : 'success'
       );
       load();
     } catch {
-      addToast('✅ Feature distributions verified: No statistically significant drift detected', 'success');
+      addToast('Feature distributions verified: No statistically significant drift detected', 'success');
     } finally {
       setChecking(false);
     }
@@ -77,8 +78,9 @@ export default function MonitoringPage() {
     <div className="page-body">
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate(-1)}>
-            ← Back
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate(-1)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <ArrowLeft size={14} /> Back
           </button>
           <div>
             <h1 className="page-title">Monitoring & Drift Detection</h1>
@@ -86,8 +88,9 @@ export default function MonitoringPage() {
           </div>
         </div>
 
-        <button className="btn btn-primary" onClick={checkDrift} disabled={checking}>
-          {checking ? <span className="spinner" style={{ width: 16, height: 16 }} /> : '🔬'} Check Drift Now
+        <button className="btn btn-primary" onClick={checkDrift} disabled={checking}
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {checking ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <FlaskConical size={15} />} Check Drift Now
         </button>
       </div>
 
@@ -98,21 +101,21 @@ export default function MonitoringPage() {
             <span className="stat-label">Total Requests</span>
             <span className="stat-value">{String(d.request_count)}</span>
           </div>
-          <div className="stat-icon-wrapper blue">📊</div>
+          <div className="stat-icon-wrapper blue"><BarChart2 size={20} /></div>
         </div>
         <div className="stat-card">
           <div className="stat-info">
             <span className="stat-label">Avg Latency</span>
             <span className="stat-value">{latency.avg_ms} ms</span>
           </div>
-          <div className="stat-icon-wrapper cyan">⚡</div>
+          <div className="stat-icon-wrapper cyan"><Zap size={20} /></div>
         </div>
         <div className="stat-card">
           <div className="stat-info">
             <span className="stat-label">P95 Latency</span>
             <span className="stat-value">{latency.p95_ms} ms</span>
           </div>
-          <div className="stat-icon-wrapper indigo">📈</div>
+          <div className="stat-icon-wrapper indigo"><TrendingUp size={20} /></div>
         </div>
         <div className="stat-card">
           <div className="stat-info">
@@ -121,7 +124,7 @@ export default function MonitoringPage() {
               ● {d.status as string}
             </span>
           </div>
-          <div className="stat-icon-wrapper green">🛡️</div>
+          <div className="stat-icon-wrapper green"><ShieldCheck size={20} /></div>
         </div>
       </div>
 

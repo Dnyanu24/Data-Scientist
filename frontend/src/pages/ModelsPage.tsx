@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Zap } from 'lucide-react';
 import { deploymentsApi, projectsApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
@@ -57,8 +58,9 @@ export default function ModelsPage() {
                     <button
                       className="btn btn-sm btn-primary"
                       onClick={() => navigate(`/projects/1`)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                     >
-                      ⚡ Predict Playground
+                      <Zap size={14} /> Predict Playground
                     </button>
                   </td>
                 </tr>

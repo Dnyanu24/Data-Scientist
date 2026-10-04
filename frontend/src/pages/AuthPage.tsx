@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BrainCircuit } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
@@ -54,8 +55,8 @@ export default function AuthPage() {
         <div className="auth-hero-glow" />
         <div style={{ maxWidth: 460, zIndex: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-            <div className="brand-icon" style={{ width: 48, height: 48, fontSize: 26 }}>
-              🧠
+            <div className="brand-icon" style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BrainCircuit size={28} color="#0284c7" />
             </div>
             <div>
               <div style={{ fontSize: 26, fontWeight: 800, color: '#ffffff', letterSpacing: -0.5 }}>

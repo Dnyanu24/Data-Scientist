@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { projectsApi, knowledgeApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import { FolderOpen, Database, FlaskConical, BrainCircuit, RefreshCw, Plus, ArrowRight, X } from 'lucide-react';
 
 interface Project {
   id: number;
@@ -104,16 +105,16 @@ export default function DashboardPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">
-            Good morning, {user?.full_name?.split(' ')[0] || user?.username || 'Data Scientist'} 👋
+            Good morning, {user?.full_name?.split(' ')[0] || user?.username || 'Data Scientist'}
           </h1>
           <p className="page-desc">Here's what's happening with your AI Data Scientist platform.</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={() => loadData()}>
-            🔄 Refresh
+          <button className="btn btn-secondary" onClick={() => loadData()} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <RefreshCw size={14} /> Refresh
           </button>
-          <button className="btn btn-primary" onClick={() => setShowNew(true)}>
-            + New Project
+          <button className="btn btn-primary" onClick={() => setShowNew(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Plus size={14} /> New Project
           </button>
         </div>
       </div>
@@ -125,7 +126,7 @@ export default function DashboardPage() {
             <span className="stat-label">Total Projects</span>
             <span className="stat-value">{stats.totalProjects}</span>
           </div>
-          <div className="stat-icon-wrapper blue">📁</div>
+          <div className="stat-icon-wrapper blue"><FolderOpen size={20} /></div>
         </div>
 
         <div className="stat-card">
@@ -133,7 +134,7 @@ export default function DashboardPage() {
             <span className="stat-label">Datasets</span>
             <span className="stat-value">{stats.datasets}</span>
           </div>
-          <div className="stat-icon-wrapper cyan">📊</div>
+          <div className="stat-icon-wrapper cyan"><Database size={20} /></div>
         </div>
 
         <div className="stat-card">
@@ -141,7 +142,7 @@ export default function DashboardPage() {
             <span className="stat-label">Experiments</span>
             <span className="stat-value">{stats.experiments}</span>
           </div>
-          <div className="stat-icon-wrapper indigo">🔬</div>
+          <div className="stat-icon-wrapper indigo"><FlaskConical size={20} /></div>
         </div>
 
         <div className="stat-card">
@@ -149,7 +150,7 @@ export default function DashboardPage() {
             <span className="stat-label">Models</span>
             <span className="stat-value">{stats.models}</span>
           </div>
-          <div className="stat-icon-wrapper green">🧠</div>
+          <div className="stat-icon-wrapper green"><BrainCircuit size={20} /></div>
         </div>
       </div>
 
@@ -170,8 +171,9 @@ export default function DashboardPage() {
               <button
                 className="btn btn-sm btn-outline-primary"
                 onClick={() => navigate(`/projects/${activeProject.id}`)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5 }}
               >
-                Open Project →
+                Open Project <ArrowRight size={13} />
               </button>
             </div>
           </div>
@@ -202,8 +204,8 @@ export default function DashboardPage() {
             <h3 className="card-title">Recent Projects</h3>
             <p className="card-subtitle">Active and completed machine learning lifecycles</p>
           </div>
-          <button className="btn btn-outline-primary btn-sm" onClick={() => setShowNew(true)}>
-            + Create Project
+          <button className="btn btn-outline-primary btn-sm" onClick={() => setShowNew(true)} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Plus size={13} /> Create Project
           </button>
         </div>
 
@@ -213,7 +215,7 @@ export default function DashboardPage() {
           </div>
         ) : projects.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', background: '#f8fbff', borderRadius: 12 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
+            <div style={{ marginBottom: 12, color: '#0284c7', display: 'flex', justifyContent: 'center' }}><FolderOpen size={48} strokeWidth={1.2} /></div>
             <h4 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>No projects yet</h4>
             <p style={{ fontSize: 13.5, color: '#64748b', marginTop: 4, marginBottom: 16 }}>
               Get started by creating your first automated AI Data Scientist project.
@@ -299,8 +301,8 @@ export default function DashboardPage() {
       {showNew && (
         <div className="modal-overlay" onClick={() => setShowNew(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowNew(false)}>
-              ✕
+            <button className="modal-close" onClick={() => setShowNew(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X size={18} />
             </button>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, textTransform: 'uppercase', color: '#0284c7', fontWeight: 700, letterSpacing: 0.5 }}>

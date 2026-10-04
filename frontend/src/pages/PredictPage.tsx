@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Rocket, Zap, CheckCircle2, Clock } from 'lucide-react';
 import { deploymentsApi, projectsApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
 
@@ -64,16 +65,20 @@ export default function PredictPage() {
   return (
     <div className="page-body">
       <div className="page-header flex items-center gap-4">
-        <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/projects/${projectId}`)}>← Back</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/projects/${projectId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ArrowLeft size={16} /> Back
+        </button>
         <div>
-          <h1 className="page-title">🔮 Real-time Prediction</h1>
+          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Zap size={22} color="#0284c7" /> Real-time Prediction
+          </h1>
           <p className="page-desc">Run inference against deployed model</p>
         </div>
       </div>
 
       {deployments.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-icon">🚀</div>
+          <div className="empty-icon"><Rocket size={32} /></div>
           <div className="empty-title">No active deployments</div>
           <div className="empty-desc">Deploy a trained model first from the project page</div>
         </div>
@@ -104,8 +109,8 @@ export default function PredictPage() {
                 onChange={(e) => setJsonInput(e.target.value)}
                 placeholder='{"feature_1": 1.5, "feature_2": "category_A", ...}'
               />
-              <button className="btn btn-primary w-full" style={{ marginTop: 12 }} onClick={predict} disabled={loading}>
-                {loading ? <span className="spinner" /> : '🔮'}
+              <button className="btn btn-primary w-full" style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={predict} disabled={loading}>
+                {loading ? <span className="spinner" /> : <Zap size={16} />}
                 {loading ? 'Predicting...' : 'Run Prediction'}
               </button>
             </div>
@@ -115,7 +120,9 @@ export default function PredictPage() {
           <div>
             {result && (
               <div className="card" style={{ marginBottom: 16, borderColor: 'var(--success)' }}>
-                <div className="card-title" style={{ marginBottom: 16 }}>✅ Prediction Result</div>
+                <div className="card-title" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a' }}>
+                  <CheckCircle2 size={18} /> Prediction Result
+                </div>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>PREDICTION</div>
                   <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
@@ -130,9 +137,9 @@ export default function PredictPage() {
                     </div>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)' }}>
-                  <span>⚡ {result.latency_ms as number}ms</span>
-                  <span>🕐 {new Date(result.timestamp as string).toLocaleTimeString()}</span>
+                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)', alignItems: 'center' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Zap size={14} /> {result.latency_ms as number}ms</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={14} /> {new Date(result.timestamp as string).toLocaleTimeString()}</span>
                 </div>
               </div>
             )}

@@ -1,21 +1,34 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  LayoutDashboard,
+  FolderOpen,
+  Database,
+  FlaskConical,
+  BrainCircuit,
+  Activity,
+  Lightbulb,
+  Settings,
+  BookOpen,
+  FileText,
+  LogOut,
+} from 'lucide-react';
 
 interface NavItem {
-  icon: string;
+  icon: React.ReactNode;
   label: string;
   path: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { icon: '🏠', label: 'Dashboard', path: '/' },
-  { icon: '📁', label: 'Projects', path: '/projects' },
-  { icon: '📊', label: 'Datasets', path: '/datasets' },
-  { icon: '🔬', label: 'Experiments', path: '/experiments' },
-  { icon: '🧠', label: 'Models', path: '/models' },
-  { icon: '📡', label: 'Monitoring', path: '/monitoring' },
-  { icon: '💡', label: 'Knowledge', path: '/knowledge' },
-  { icon: '⚙️', label: 'Settings', path: '/settings' },
+  { icon: <LayoutDashboard size={16} />, label: 'Dashboard', path: '/' },
+  { icon: <FolderOpen size={16} />, label: 'Projects', path: '/projects' },
+  { icon: <Database size={16} />, label: 'Datasets', path: '/datasets' },
+  { icon: <FlaskConical size={16} />, label: 'Experiments', path: '/experiments' },
+  { icon: <BrainCircuit size={16} />, label: 'Models', path: '/models' },
+  { icon: <Activity size={16} />, label: 'Monitoring', path: '/monitoring' },
+  { icon: <Lightbulb size={16} />, label: 'Knowledge', path: '/knowledge' },
+  { icon: <Settings size={16} />, label: 'Settings', path: '/settings' },
 ];
 
 export default function Sidebar() {
@@ -49,12 +62,12 @@ export default function Sidebar() {
         ))}
 
         <div className="nav-section-label" style={{ marginTop: 20 }}>Documentation</div>
-        <a className="nav-item" href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer">
-          <span className="nav-icon">📚</span>
+        <a className="nav-item" href="http://localhost:8001/docs" target="_blank" rel="noopener noreferrer">
+          <span className="nav-icon"><BookOpen size={16} /></span>
           Swagger Docs
         </a>
-        <a className="nav-item" href="http://localhost:8000/redoc" target="_blank" rel="noopener noreferrer">
-          <span className="nav-icon">📖</span>
+        <a className="nav-item" href="http://localhost:8001/redoc" target="_blank" rel="noopener noreferrer">
+          <span className="nav-icon"><FileText size={16} /></span>
           ReDoc
         </a>
       </nav>
@@ -68,7 +81,7 @@ export default function Sidebar() {
             <div className="user-name">{user?.full_name || user?.username || 'Data Scientist'}</div>
             <div className="user-email">{user?.email || 'admin@aidatascientist.io'}</div>
           </div>
-          <span style={{ fontSize: 13, color: '#94a3b8' }} title="Logout">🚪</span>
+          <LogOut size={14} style={{ color: '#94a3b8', flexShrink: 0 }} title="Logout" />
         </div>
       </div>
     </aside>

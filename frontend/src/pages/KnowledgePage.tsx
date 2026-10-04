@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { knowledgeApi } from '../api/client';
 import { useToast } from '../contexts/ToastContext';
+import { BrainCircuit, FlaskConical, Package, Zap, Lightbulb } from 'lucide-react';
 
 export default function KnowledgePage() {
   const [activeTab, setActiveTab] = useState<'algorithms' | 'datasets' | 'experiments'>('algorithms');
@@ -50,7 +51,7 @@ export default function KnowledgePage() {
             <span className="stat-label">Known Algorithms</span>
             <span className="stat-value">{stats?.known_algorithms || 15}</span>
           </div>
-          <div className="stat-icon-wrapper blue">🧠</div>
+          <div className="stat-icon-wrapper blue"><BrainCircuit size={20} /></div>
         </div>
 
         <div className="stat-card">
@@ -58,7 +59,7 @@ export default function KnowledgePage() {
             <span className="stat-label">Meta-Experiments</span>
             <span className="stat-value">{stats?.historical_experiments || 12}</span>
           </div>
-          <div className="stat-icon-wrapper cyan">🔬</div>
+          <div className="stat-icon-wrapper cyan"><FlaskConical size={20} /></div>
         </div>
 
         <div className="stat-card">
@@ -66,7 +67,7 @@ export default function KnowledgePage() {
             <span className="stat-label">Trained Models</span>
             <span className="stat-value">{stats?.total_models_trained || 6}</span>
           </div>
-          <div className="stat-icon-wrapper indigo">📦</div>
+          <div className="stat-icon-wrapper indigo"><Package size={20} /></div>
         </div>
 
         <div className="stat-card">
@@ -74,13 +75,15 @@ export default function KnowledgePage() {
             <span className="stat-label">Learning Status</span>
             <span className="stat-value" style={{ fontSize: 20, color: '#059669' }}>Continuous</span>
           </div>
-          <div className="stat-icon-wrapper green">⚡</div>
+          <div className="stat-icon-wrapper green"><Zap size={20} /></div>
         </div>
       </div>
 
       {/* Experience Insights (Panel 18 Mockup) */}
       <div className="card" style={{ marginBottom: 24, background: '#f8fbff', borderColor: '#bfdbfe' }}>
-        <h3 className="card-title" style={{ marginBottom: 12 }}>💡 Experience Insights</h3>
+        <h3 className="card-title" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <Lightbulb size={18} color="#f59e0b" /> Experience Insights
+        </h3>
         <div className="grid-3">
           <div style={{ padding: 14, background: '#ffffff', borderRadius: 10, border: '1px solid #dbeafe' }}>
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Best Model for Tabular Data</div>
