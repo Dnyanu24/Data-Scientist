@@ -109,6 +109,14 @@ class Project(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+    @property
+    def current_phase(self):
+        return self.phase.value if hasattr(self.phase, "value") else str(self.phase)
+
+    @current_phase.setter
+    def current_phase(self, val):
+        self.phase = val
+
     owner = relationship("User", back_populates="projects")
     datasets = relationship("Dataset", back_populates="project", cascade="all, delete-orphan")
     trained_models = relationship("TrainedModel", back_populates="project", cascade="all, delete-orphan")

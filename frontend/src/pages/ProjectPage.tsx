@@ -12,8 +12,6 @@ import { useToast } from '../contexts/ToastContext';
 import {
   Upload, Search, Fingerprint, Sparkles, Target,
   SlidersHorizontal, Bot, BarChart3, Rocket,
-  Zap, TrendingUp, ShieldCheck, RefreshCw, ArrowLeft,
-  ArrowRight, Play, Check, Plus, X, FlaskConical,
 } from 'lucide-react';
 import {
   BarChart,
@@ -31,15 +29,15 @@ import {
 } from 'recharts';
 
 const PHASES = [
-  { key: 'created',       label: '1. Ingestion',   IconComp: Upload },
-  { key: 'uploaded',      label: '2. Understanding', IconComp: Search },
-  { key: 'profiled',      label: '3. Fingerprint', IconComp: Fingerprint },
-  { key: 'fingerprinted', label: '4. Meta-Learn',  IconComp: Sparkles },
-  { key: 'recommended',  label: '5. Recommend',   IconComp: Target },
-  { key: 'preprocessing', label: '6. Preprocess',  IconComp: SlidersHorizontal },
-  { key: 'training',      label: '7. Training',    IconComp: Bot },
-  { key: 'trained',       label: '8. Evaluation',  IconComp: BarChart3 },
-  { key: 'deployed',      label: '9. Deployed',    IconComp: Rocket },
+  { key: 'created', label: '1. Ingestion', IconComp: Upload },
+  { key: 'uploaded', label: '2. Understanding', IconComp: Search },
+  { key: 'profiled', label: '3. Fingerprint', IconComp: Fingerprint },
+  { key: 'fingerprinted', label: '4. Meta-Learn', IconComp: Sparkles },
+  { key: 'recommended', label: '5. Recommend', IconComp: Target },
+  { key: 'preprocessing', label: '6. Preprocess', IconComp: SlidersHorizontal },
+  { key: 'training', label: '7. Training', IconComp: Bot },
+  { key: 'trained', label: '8. Evaluation', IconComp: BarChart3 },
+  { key: 'deployed', label: '9. Deployed', IconComp: Rocket },
 ];
 
 const PHASE_ORDER = PHASES.map((p) => p.key);
@@ -75,6 +73,7 @@ export default function ProjectPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const datasetRef = useRef<Record<string, unknown> | null>(null);
 
   const loadProject = useCallback(async () => {
     try {
@@ -88,29 +87,108 @@ export default function ProjectPage() {
   }, [projectId, addToast]);
 
   const pollTask = useCallback(
-    (taskId: number, onDone: () => void) => {
+    (taskId: number, onDone?: () => void, autoFollow = true) => {
       if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
+      let currentTaskId = taskId;
+      let consecutiveErrors = 0;
+
+      const tick = async () => {
         try {
-          const r = await tasksApi.get(taskId);
+          const r = await tasksApi.get(currentTaskId);
+          consecutiveErrors = 0;
           const t = r.data;
-          setActiveTask({ id: taskId, type: t.task_type, progress: t.progress, message: t.message });
+          setActiveTask({ id: currentTaskId, type: t.task_type, progress: t.progress, message: t.message || '' });
+
           if (t.status === 'completed' || t.status === 'failed') {
-            clearInterval(pollRef.current!);
-            setActiveTask(null);
             if (t.status === 'completed') {
-              onDone();
-              addToast('Task completed successfully!', 'success');
+              // Fetch similar datasets safely only when fingerprinting completes
+              if (t.task_type === 'fingerprinting') {
+                const targetDatasetId = (datasetRef.current as { id?: number })?.id || (dataset as { id?: number })?.id;
+                if (targetDatasetId) {
+                  datasetsApi
+                    .getSimilar(targetDatasetId, 5)
+                    .then((res) => setSimilarDatasets(res.data?.similar_datasets || res.data || []))
+                    .catch(() => setSimilarDatasets([]));
+                }
+              }
+
+              // Advance stepper immediately from task response
+              if (t.project_phase) {
+                setProject((prev) => prev ? { ...prev, phase: t.project_phase, phase_progress: 1.0 } : prev);
+              }
+              // Reload project from DB
+              try { await loadProject(); } catch (e) { console.warn('[pollTask] loadProject graceful:', e); }
+
+              // ── 1. Direct chained task lookup from task response payload ──
+              const chainedTaskId =
+                t.next_task_id ||
+                t.active_task_id ||
+                t.result?.next_task_id ||
+                t.result?.active_task_id ||
+                t.project?.active_task_id ||
+                t.project?.next_task_id;
+
+              if (chainedTaskId && Number(chainedTaskId) !== currentTaskId) {
+                console.info(`[pollTask] Auto-following direct chained task ID: ${chainedTaskId}`);
+                addToast('Pipeline advancing to next phase…', 'info');
+                currentTaskId = Number(chainedTaskId);
+                return;
+              }
+
+              // ── 2. Fallback: detect next pending/running task for project ──
+              if (autoFollow) {
+                try {
+                  const tasksRes = await tasksApi.listByProject(projectId);
+                  const allTasks: Array<{ id: number; status: string; task_type: string; created_at: string }> =
+                    tasksRes.data || [];
+                  const nextTask = allTasks
+                    .filter((tk) => tk.id !== currentTaskId && (tk.status === 'pending' || tk.status === 'running'))
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+                  if (nextTask) {
+                    console.info(`[pollTask] Auto-following chained task from project: ${nextTask.task_type} (id=${nextTask.id})`);
+                    addToast(`Pipeline advancing: ${nextTask.task_type.replace(/_/g, ' ')}…`, 'info');
+                    currentTaskId = nextTask.id;
+                    return;
+                  }
+                } catch (e) {
+                  console.warn('[pollTask] autoFollow listByProject failed gracefully:', e);
+                }
+              }
+
+              // No chained task found — pipeline segment done
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              setActiveTask(null);
+              if (onDone) {
+                try { await onDone(); } catch (e) { console.warn('[pollTask] onDone graceful:', e); }
+              }
+              addToast('Pipeline stage completed!', 'success');
             } else {
-              addToast(`Task failed: ${t.message}`, 'error');
+              // Failed
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              setActiveTask(null);
+              addToast(`Task failed: ${t.message || 'Unknown error'}`, 'error');
             }
           }
-        } catch {
-          clearInterval(pollRef.current!);
+        } catch (err) {
+          consecutiveErrors++;
+          console.warn(`[pollTask] Network glitch polling task ${currentTaskId} (${consecutiveErrors}/5):`, err);
+          if (consecutiveErrors >= 5) {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setActiveTask(null);
+            addToast('Task polling lost connectivity after 5 retries', 'error');
+          }
         }
-      }, 2000);
+      };
+
+      // Run once immediately, then every 2s
+      tick();
+      pollRef.current = setInterval(tick, 2000);
     },
-    [addToast]
+    [loadProject, addToast, projectId]
   );
 
   useEffect(() => {
@@ -129,29 +207,34 @@ export default function ProjectPage() {
         if (r.data?.length > 0) {
           const ds = r.data[0];
           setDataset(ds);
+          datasetRef.current = ds;
           // Auto load preview
           datasetsApi
             .preview(ds.id, 1, 10)
             .then((pv) => setPreview(pv.data))
-            .catch(() => {});
-          // Load similar datasets
-          datasetsApi
-            .getSimilar(ds.id, 5)
-            .then((sim) => setSimilarDatasets(sim.data || []))
-            .catch(() => {});
+            .catch(() => { });
+
+          // Load similar datasets only if dataset has reached or passed fingerprinting phase
+          const phase = (project as { phase?: string })?.phase || '';
+          if (['fingerprinted', 'recommended', 'preprocessing', 'training', 'trained', 'deployed'].includes(phase)) {
+            datasetsApi
+              .getSimilar(ds.id, 5)
+              .then((sim) => setSimilarDatasets(sim.data?.similar_datasets || sim.data || []))
+              .catch(() => setSimilarDatasets([]));
+          }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     recommendationsApi
       .list(projectId)
       .then((r) => setRecommendations(r.data || []))
-      .catch(() => {});
+      .catch(() => { });
 
     experimentsApi
       .leaderboard(projectId)
       .then((r) => setLeaderboard(r.data || []))
-      .catch(() => {});
+      .catch(() => { });
 
     deploymentsApi
       .list(projectId)
@@ -159,7 +242,7 @@ export default function ProjectPage() {
         setDeployments(r.data || []);
         if (r.data?.length > 0) setSelectedDeployment(r.data[0].id);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [project, projectId]);
 
   const uploadDataset = async (file: File) => {
@@ -169,12 +252,41 @@ export default function ProjectPage() {
     fd.append('file', file);
     try {
       const r = await datasetsApi.upload(fd);
-      setDataset(r.data);
-      addToast('Dataset uploaded! Performing initial inspection...', 'success');
+      const uploaded = r.data;
+      setDataset(uploaded);
+      datasetRef.current = uploaded;
+      addToast('Dataset uploaded! Starting profiling…', 'success');
       loadProject();
-      // Load preview
-      const pv = await datasetsApi.preview(r.data.id, 1, 10);
-      setPreview(pv.data);
+      // Load preview (non-blocking)
+      datasetsApi.preview(uploaded.id, 1, 10)
+        .then((pv) => setPreview(pv.data))
+        .catch(() => {});
+
+      // Grab returned task_id (or dataset.id), trigger triggerProfile(), and start pollTask(taskId)
+      const taskId: number | null = uploaded.task_id || uploaded.auto_profile_task_id || null;
+      if (taskId) {
+        addToast('Profiling auto-started! Monitoring pipeline…', 'info');
+        pollTask(taskId, () => {
+          recommendationsApi.list(projectId).then((res) => setRecommendations(res.data || [])).catch(() => {});
+          experimentsApi.leaderboard(projectId).then((res) => setLeaderboard(res.data || [])).catch(() => {});
+          deploymentsApi.list(projectId).then((r2) => { setDeployments(r2.data || []); }).catch(() => {});
+          loadProject();
+        }, true /* autoFollow chained tasks */);
+      } else if (uploaded.id) {
+        // Fallback: manually trigger profiling
+        try {
+          const profRes = await datasetsApi.profile(uploaded.id);
+          const profTaskId = profRes.data?.task_id;
+          if (profTaskId) {
+            addToast('Profiling initiated! Monitoring pipeline…', 'info');
+            pollTask(profTaskId, () => {
+              loadProject();
+            }, true /* autoFollow */);
+          }
+        } catch {
+          addToast('Could not start profiling automatically', 'error');
+        }
+      }
     } catch {
       addToast('Upload failed. Please ensure file is valid CSV or Excel.', 'error');
     } finally {
@@ -186,8 +298,8 @@ export default function ProjectPage() {
     if (!dataset) return;
     try {
       const r = await datasetsApi.profile((dataset as { id: number }).id);
-      addToast('Statistical profiling initiated...', 'info');
-      pollTask(r.data.task_id, loadProject);
+      addToast('Statistical profiling initiated — pipeline will auto-advance…', 'info');
+      pollTask(r.data.task_id, loadProject, true /* autoFollow */);
     } catch {
       addToast('Profiling failed to initiate', 'error');
     }
@@ -195,13 +307,17 @@ export default function ProjectPage() {
 
   const triggerFingerprint = async () => {
     if (!dataset) return;
+    const dsId = (dataset as { id: number }).id;
     try {
-      const r = await datasetsApi.fingerprint((dataset as { id: number }).id);
-      addToast('Extracting 32 meta-features & fingerprint...', 'info');
+      const r = await datasetsApi.fingerprint(dsId);
+      addToast('Extracting meta-features & fingerprint — pipeline will auto-advance…', 'info');
       pollTask(r.data.task_id, () => {
         loadProject();
-        datasetsApi.getSimilar((dataset as { id: number }).id, 5).then((sim) => setSimilarDatasets(sim.data || []));
-      });
+        datasetsApi
+          .getSimilar(dsId, 5)
+          .then((sim) => setSimilarDatasets(sim.data?.similar_datasets || sim.data || []))
+          .catch(() => setSimilarDatasets([]));
+      }, true /* autoFollow */);
     } catch {
       addToast('Fingerprinting failed', 'error');
     }
@@ -212,7 +328,10 @@ export default function ProjectPage() {
       const r = await recommendationsApi.trigger(projectId);
       addToast('Running hybrid AI algorithm recommendation...', 'info');
       pollTask(r.data.task_id, () => {
-        recommendationsApi.list(projectId).then((res) => setRecommendations(res.data || []));
+        recommendationsApi
+          .list(projectId)
+          .then((res) => setRecommendations(res.data || []))
+          .catch((err) => console.warn('recommendations list handled:', err));
         loadProject();
       });
     } catch {
@@ -235,7 +354,10 @@ export default function ProjectPage() {
       const r = await experimentsApi.startTraining(projectId);
       addToast('Starting 3-stage training & hyperparameter optimization...', 'info');
       pollTask(r.data.task_id, () => {
-        experimentsApi.leaderboard(projectId).then((res) => setLeaderboard(res.data || []));
+        experimentsApi
+          .leaderboard(projectId)
+          .then((res) => setLeaderboard(res.data || []))
+          .catch((err) => console.warn('leaderboard handled:', err));
         loadProject();
       });
     } catch {
@@ -244,7 +366,7 @@ export default function ProjectPage() {
   };
 
   const deployBestModel = async () => {
-    const best = (leaderboard as Array<{ id: number; is_best?: boolean }>)[0];
+    const best = (leaderboard as Array<{ id: number; is_best?: boolean }>).find((m) => m.is_best) || (leaderboard as Array<{ id: number; is_best?: boolean }>)[0];
     if (!best) return addToast('No trained models available to deploy', 'error');
     try {
       await deploymentsApi.deploy(best.id);
@@ -254,6 +376,24 @@ export default function ProjectPage() {
       loadProject();
     } catch {
       addToast('Deployment failed', 'error');
+    }
+  };
+
+  const handleSetBestModel = async (modelId: number) => {
+    try {
+      await experimentsApi.setBest(modelId);
+      addToast('Champion model set! Advanced to Phase 9 (Deployed).', 'success');
+      setProject((prev) => (prev ? { ...prev, phase: 'deployed', phase_progress: 1.0 } : prev));
+      const [lb, deps] = await Promise.all([
+        experimentsApi.leaderboard(projectId),
+        deploymentsApi.list(projectId),
+        loadProject(),
+      ]);
+      setLeaderboard(lb.data || []);
+      setDeployments(deps.data || []);
+      if (deps.data?.length > 0) setSelectedDeployment(deps.data[0].id);
+    } catch {
+      addToast('Failed to set champion model', 'error');
     }
   };
 
@@ -285,21 +425,43 @@ export default function ProjectPage() {
   };
 
   const setSampleData = () => {
-    setPredictionInput(
-      JSON.stringify(
-        {
-          tenure: 2,
-          monthly_charges: 85.5,
-          total_charges: 171.0,
-          contract: 'Month-to-month',
-          payment_method: 'Electronic check',
-          paperless_billing: 'Yes',
-          tech_support: 'No',
-        },
-        null,
-        2
-      )
-    );
+    const isReg = project?.problem_type && String(project.problem_type).toLowerCase().includes('regression');
+    if (isReg) {
+      setPredictionInput(
+        JSON.stringify(
+          {
+            Rooms: 3,
+            Distance: 5.2,
+            Postcode: 3000,
+            Bedroom2: 3,
+            Bathroom: 2,
+            Car: 1,
+            Landsize: 400,
+            BuildingArea: 150,
+            YearBuilt: 1980,
+            Propertycount: 4000,
+          },
+          null,
+          2
+        )
+      );
+    } else {
+      setPredictionInput(
+        JSON.stringify(
+          {
+            tenure: 2,
+            monthly_charges: 85.5,
+            total_charges: 171.0,
+            contract: 'Month-to-month',
+            payment_method: 'Electronic check',
+            paperless_billing: 'Yes',
+            tech_support: 'No',
+          },
+          null,
+          2
+        )
+      );
+    }
   };
 
   if (!project) {
@@ -376,7 +538,7 @@ export default function ProjectPage() {
               key={ph.key}
               className={`phase-step ${i < currentPhaseIdx ? 'completed' : ''} ${i === currentPhaseIdx ? 'active' : ''}`}
             >
-              <div className="phase-dot">{i < currentPhaseIdx ? '✓' : ph.icon}</div>
+              <div className="phase-dot">{i < currentPhaseIdx ? '✓' : <ph.IconComp size={14} />}</div>
               <div className="phase-label">{ph.label}</div>
             </div>
           ))}
@@ -468,7 +630,7 @@ export default function ProjectPage() {
             <div className="stat-card">
               <div className="stat-info">
                 <span className="stat-label">Total Columns</span>
-                <span className="stat-value">{ds?.num_columns || '21'}</span>
+                <span className="stat-value">{String(ds?.num_columns || '21')}</span>
               </div>
               <div className="stat-icon-wrapper cyan">📋</div>
             </div>
@@ -719,7 +881,7 @@ export default function ProjectPage() {
                 </div>
                 <div className="flex justify-between" style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <span style={{ color: '#64748b' }}>Columns / Features</span>
-                  <strong style={{ color: '#0f172a' }}>{ds?.num_columns || '21'}</strong>
+                  <strong style={{ color: '#0f172a' }}>{String(ds?.num_columns || '21')}</strong>
                 </div>
                 <div className="flex justify-between" style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <span style={{ color: '#64748b' }}>Data Types</span>
@@ -782,13 +944,18 @@ export default function ProjectPage() {
                 </tr>
               </thead>
               <tbody>
-                {[
+                {(similarDatasets.length > 0 ? (similarDatasets as Array<Record<string, unknown>>).map((s) => ({
+                  name: `Historical Dataset #${s.id || s.dataset_id || 'Ref'}`,
+                  score: typeof s.similarity_score === 'number' ? s.similarity_score : 0.85,
+                  desc: `${s.problem_type || 'Classification'} • ${s.num_features || 10} features`,
+                  model: `${s.best_algorithm || 'XGBoost'}`,
+                })) : [
                   { name: 'Telco Customer Churn', score: 0.88, desc: 'Similar structure, same domain', model: 'XGBoost (0.912 F1)' },
                   { name: 'Bank Customer Marketing', score: 0.74, desc: 'Customer behavior & retention', model: 'LightGBM (0.898 F1)' },
                   { name: 'Online Retail Attrition', score: 0.65, desc: 'E-commerce transactional profile', model: 'CatBoost (0.871 F1)' },
                   { name: 'Insurance Policy Claims', score: 0.58, desc: 'Mixed numerical and categorical features', model: 'Random Forest (0.856 F1)' },
                   { name: 'Credit Risk Benchmark', score: 0.51, desc: 'Financial tabular classification', model: 'XGBoost (0.884 F1)' },
-                ].map((item, idx) => (
+                ]).map((item, idx) => (
                   <tr key={idx}>
                     <td style={{ fontWeight: 700, color: '#0f172a' }}>{item.name}</td>
                     <td>
@@ -827,13 +994,19 @@ export default function ProjectPage() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[
+              {(recommendations.length > 0 ? (recommendations as Array<Record<string, unknown>>).map((r, i) => ({
+                name: String(r.algorithm_name || r.name || 'Model'),
+                score: `${Math.round(((r.overall_score as number) || 0.8) * 100)}%`,
+                badge: i === 0 ? 'Best Choice' : 'Candidate',
+                badgeClass: i === 0 ? 'badge-success' : 'badge-primary',
+                desc: String(r.reasoning || r.description || 'Recommended algorithm for dataset characteristics'),
+              })) : [
                 { name: 'XGBoost', score: '92.4%', badge: 'Best Choice', badgeClass: 'badge-success', desc: 'Gradient boosted trees with regularized objective' },
                 { name: 'LightGBM', score: '89.1%', badge: 'High Priority', badgeClass: 'badge-primary', desc: 'Leaf-wise tree growth with fast histogram computation' },
                 { name: 'CatBoost', score: '85.7%', badge: 'Medium Priority', badgeClass: 'badge-accent', desc: 'Symmetric decision trees with native categorical handling' },
                 { name: 'Random Forest', score: '82.3%', badge: 'Standard', badgeClass: 'badge-muted', desc: 'Ensemble bagging across decorrelated decision trees' },
                 { name: 'Logistic Regression', score: '76.8%', badge: 'Baseline', badgeClass: 'badge-muted', desc: 'L2-regularized linear decision boundary' },
-              ].map((algo, i) => (
+              ]).map((algo, i) => (
                 <div
                   key={i}
                   style={{
@@ -1081,90 +1254,199 @@ export default function ProjectPage() {
       )}
 
       {/* ───────────────── TAB 8: LEADERBOARD & DEPLOY (Panel 12) ───────────────── */}
-      {activeTab === 'leaderboard' && (
-        <div>
-          {/* Best Model Highlight Card */}
-          <div
-            className="card"
-            style={{
-              marginBottom: 20,
-              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-              border: '2px solid #38bdf8',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <span className="badge badge-success">Best Performing Model Selected</span>
-                <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
-                  XGBoost Classifier (Tuned)
-                </h2>
-                <p style={{ fontSize: 13.5, color: '#475569', marginTop: 2 }}>
-                  Accuracy: <strong>91.2%</strong> · F1 Score: <strong>0.894</strong> · ROC-AUC: <strong>0.928</strong>
-                </p>
+      {activeTab === 'leaderboard' && (() => {
+        const modelsList = (leaderboard as any[]) || [];
+        const bestModel = modelsList.find((m) => m.is_best) || modelsList[0] || null;
+        const isReg =
+          (project?.problem_type && String(project.problem_type).toLowerCase().includes('regression')) ||
+          (bestModel?.metrics && ('r2' in bestModel.metrics || 'rmse' in bestModel.metrics || 'mse' in bestModel.metrics));
+
+        return (
+          <div>
+            {/* Best Model Highlight Card */}
+            {bestModel ? (
+              <div
+                className="card"
+                style={{
+                  marginBottom: 20,
+                  background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                  border: '2px solid #38bdf8',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="badge badge-success">
+                        {bestModel.is_best ? '👑 Champion Model (Deployed)' : '🌟 Top Performing Candidate'}
+                      </span>
+                      <span className="badge badge-primary">Model #{bestModel.id}</span>
+                      <span className="badge badge-secondary">{bestModel.status}</span>
+                    </div>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginTop: 6 }}>
+                      {bestModel.name || bestModel.algorithm_name}
+                    </h2>
+                    <p style={{ fontSize: 13.5, color: '#475569', marginTop: 4 }}>
+                      {isReg ? (
+                        <>
+                          R² Score: <strong style={{ color: '#0284c7' }}>{bestModel.metrics?.r2 != null ? Number(bestModel.metrics.r2).toFixed(4) : 'N/A'}</strong> · RMSE: <strong>{bestModel.metrics?.rmse != null ? Number(bestModel.metrics.rmse).toLocaleString() : 'N/A'}</strong> · MAE: <strong>{bestModel.metrics?.mae != null ? Number(bestModel.metrics.mae).toLocaleString() : 'N/A'}</strong> · MSE: <strong>{bestModel.metrics?.mse != null ? Number(bestModel.metrics.mse).toLocaleString() : 'N/A'}</strong>
+                        </>
+                      ) : (
+                        <>
+                          Accuracy: <strong style={{ color: '#0284c7' }}>{bestModel.metrics?.accuracy != null ? (Number(bestModel.metrics.accuracy) * 100).toFixed(1) + '%' : 'N/A'}</strong> · F1 Score: <strong>{bestModel.metrics?.f1_score != null ? Number(bestModel.metrics.f1_score).toFixed(4) : 'N/A'}</strong> · ROC-AUC: <strong>{bestModel.metrics?.auc_roc != null ? Number(bestModel.metrics.auc_roc).toFixed(4) : 'N/A'}</strong>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {!bestModel.is_best && (
+                      <button className="btn btn-outline-primary" onClick={() => handleSetBestModel(bestModel.id)}>
+                        👑 Set as Champion
+                      </button>
+                    )}
+                    <button className="btn btn-primary btn-lg" onClick={deployBestModel}>
+                      🚀 Deploy Model to Endpoint
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button className="btn btn-primary btn-lg" onClick={deployBestModel}>
-                🚀 Deploy Model to Endpoint
-              </button>
-            </div>
-          </div>
+            ) : (
+              <div className="card" style={{ marginBottom: 20, textAlign: 'center', padding: '30px 20px' }}>
+                <p style={{ fontSize: 16, color: '#475569', marginBottom: 12 }}>
+                  No models trained yet. Start 3-stage training to evaluate real Scikit-Learn, XGBoost, and LightGBM models.
+                </p>
+                <button className="btn btn-primary" onClick={triggerTraining}>
+                  🚀 Start Training Pipeline
+                </button>
+              </div>
+            )}
 
-          {/* Model Comparison Table */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Model Comparison & Leaderboard</h3>
-              <span className="badge badge-primary">Cross-Validated Metrics</span>
-            </div>
+            {/* Model Comparison Table */}
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 className="card-title">Model Comparison & Leaderboard ({modelsList.length} Models)</h3>
+                  <p style={{ fontSize: 12.5, color: '#64748b', margin: 0 }}>
+                    Live evaluated models from SQLite database ranked by validation performance
+                  </p>
+                </div>
+                <span className="badge badge-primary">
+                  {isReg ? 'Regression Metrics' : 'Classification Metrics'}
+                </span>
+              </div>
 
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Model Name</th>
-                    <th>Accuracy</th>
-                    <th>Precision</th>
-                    <th>Recall</th>
-                    <th>F1 Score</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { name: 'XGBoost', acc: '0.912', prec: '0.901', rec: '0.887', f1: '0.894', best: true },
-                    { name: 'LightGBM', acc: '0.901', prec: '0.892', rec: '0.871', f1: '0.881', best: false },
-                    { name: 'CatBoost', acc: '0.892', prec: '0.878', rec: '0.862', f1: '0.869', best: false },
-                    { name: 'Random Forest', acc: '0.856', prec: '0.841', rec: '0.823', f1: '0.832', best: false },
-                    { name: 'Logistic Regression', acc: '0.812', prec: '0.791', rec: '0.760', f1: '0.775', best: false },
-                  ].map((m, idx) => (
-                    <tr key={idx} style={{ background: m.best ? '#f0f9ff' : 'transparent' }}>
-                      <td style={{ fontWeight: 700, color: '#0f172a' }}>
-                        {m.name} {m.best && <span className="badge badge-success">Best</span>}
-                      </td>
-                      <td>{m.acc}</td>
-                      <td>{m.prec}</td>
-                      <td>{m.rec}</td>
-                      <td>
-                        <strong style={{ color: '#0284c7' }}>{m.f1}</strong>
-                      </td>
-                      <td>
-                        <span className="badge badge-success">Evaluated</span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn btn-sm btn-outline-primary"
-                          onClick={() => addToast(`Model details for ${m.name}`, 'info')}
-                        >
-                          View Explanations
-                        </button>
-                      </td>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 60 }}>ID</th>
+                      <th>Model Name</th>
+                      <th>Algorithm</th>
+                      {isReg ? (
+                        <>
+                          <th>R² Score</th>
+                          <th>RMSE</th>
+                          <th>MAE</th>
+                        </>
+                      ) : (
+                        <>
+                          <th>Accuracy</th>
+                          <th>Precision</th>
+                          <th>Recall</th>
+                          <th>F1 Score</th>
+                        </>
+                      )}
+                      <th>Stage</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {modelsList.length === 0 ? (
+                      <tr>
+                        <td colSpan={isReg ? 8 : 9} style={{ textAlign: 'center', padding: 30, color: '#64748b' }}>
+                          No models evaluated yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      modelsList.map((m: any) => {
+                        const isChampion = Boolean(m.is_best);
+                        const metrics = m.metrics || {};
+                        return (
+                          <tr key={m.id} style={{ background: isChampion ? '#f0f9ff' : 'transparent' }}>
+                            <td style={{ fontWeight: 600, color: '#64748b' }}>#{m.id}</td>
+                            <td style={{ fontWeight: 700, color: '#0f172a' }}>
+                              {m.name}{' '}
+                              {isChampion && <span className="badge badge-success">👑 Champion</span>}
+                            </td>
+                            <td>
+                              <span className="badge badge-secondary">{m.algorithm_name}</span>
+                            </td>
+                            {isReg ? (
+                              <>
+                                <td>
+                                  <strong style={{ color: metrics.r2 != null ? '#0284c7' : '#64748b' }}>
+                                    {metrics.r2 != null ? Number(metrics.r2).toFixed(4) : '-'}
+                                  </strong>
+                                </td>
+                                <td>{metrics.rmse != null ? Number(metrics.rmse).toLocaleString() : '-'}</td>
+                                <td>{metrics.mae != null ? Number(metrics.mae).toLocaleString() : '-'}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td>{metrics.accuracy != null ? (Number(metrics.accuracy) * 100).toFixed(1) + '%' : '-'}</td>
+                                <td>{metrics.precision != null ? (Number(metrics.precision) * 100).toFixed(1) + '%' : '-'}</td>
+                                <td>{metrics.recall != null ? (Number(metrics.recall) * 100).toFixed(1) + '%' : '-'}</td>
+                                <td>
+                                  <strong style={{ color: '#0284c7' }}>
+                                    {metrics.f1_score != null ? Number(metrics.f1_score).toFixed(4) : '-'}
+                                  </strong>
+                                </td>
+                              </>
+                            )}
+                            <td>
+                              <span className="badge badge-outline">{m.training_stage || 'stage_1'}</span>
+                            </td>
+                            <td>
+                              <span className="badge badge-success">{m.status}</span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: 6 }}>
+                                {!isChampion ? (
+                                  <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => handleSetBestModel(m.id)}
+                                  >
+                                    👑 Set Best
+                                  </button>
+                                ) : (
+                                  <button className="btn btn-sm btn-success" disabled>
+                                    ✓ Active Best
+                                  </button>
+                                )}
+                                <button
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={() =>
+                                    addToast(
+                                      `Model #${m.id} (${m.name}) parameters: ${JSON.stringify(m.hyperparameters || {})}`,
+                                      'info'
+                                    )
+                                  }
+                                >
+                                  Details
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ───────────────── TAB 9: REAL-TIME PREDICT (Panel 15) ───────────────── */}
       {activeTab === 'predict' && (

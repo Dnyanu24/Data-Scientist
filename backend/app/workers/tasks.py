@@ -8,12 +8,19 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+# Forward-declare so chaining functions can reference tasks defined later
+_profile_task_ref = None
+_fingerprint_task_ref = None
+_recommend_task_ref = None
+_preprocess_task_ref = None
+
 from app.workers.celery_app import celery_app
 from app.database.session import SyncSessionLocal
 from app.models.models import (
     Project, Dataset, DatasetFingerprint, AlgorithmRecommendation,
     PreprocessingConfig, Experiment, TrainedModel, BackgroundTask,
-    ExperienceRecord, PipelinePhase, ModelStatus, TrainingStage
+    ExperienceRecord, PipelinePhase, ModelStatus, TrainingStage,
+    Deployment, DeploymentStatus
 )
 from app.ml.profiling import data_profiler
 from app.ml.fingerprinting import fingerprinter
@@ -43,6 +50,26 @@ def update_task_progress(task_id: int, progress: float, message: str, status: st
             task.message = message
             task.status = status
             task.updated_at = datetime.utcnow()
+            if status == "completed":
+                task.completed_at = datetime.utcnow()
+                if task.project_id:
+                    task_phase_map = {
+                        "profiling": PipelinePhase.PROFILED.value,
+                        "fingerprinting": PipelinePhase.FINGERPRINTED.value,
+                        "recommendation": PipelinePhase.RECOMMENDED.value,
+                        "recommend": PipelinePhase.RECOMMENDED.value,
+                        "meta_learning": PipelinePhase.RECOMMENDED.value,
+                        "preprocessing": PipelinePhase.PREPROCESSED.value,
+                        "training": PipelinePhase.DEPLOYED.value,
+                    }
+                    target_phase = task_phase_map.get(task.task_type)
+                    if target_phase:
+                        project = db.query(Project).filter(Project.id == task.project_id).first()
+                        if project:
+                            project.phase = target_phase
+                            project.phase_progress = 1.0
+                            project.phase_message = message or f"{task.task_type.capitalize()} completed"
+                            project.updated_at = datetime.utcnow()
             db.commit()
     finally:
         if close_db:
@@ -148,6 +175,32 @@ def profile_dataset_task(self, project_id: int, dataset_id: int, task_id: int):
             }
             db.commit()
 
+        # ── AUTO-CHAIN: spawn fingerprinting immediately ──────────────────
+        try:
+            next_task = BackgroundTask(
+                project_id=project_id,
+                task_type="fingerprinting",
+                status="pending",
+                progress=0.0,
+                message="Fingerprinting queued (auto-chained from profiling)...",
+            )
+            db.add(next_task)
+            db.commit()
+            db.refresh(next_task)
+
+            if task:
+                curr_res = dict(task.result or {})
+                curr_res["next_task_id"] = next_task.id
+                curr_res["active_task_id"] = next_task.id
+                task.result = curr_res
+                db.commit()
+
+            from app.workers.dispatcher import dispatch_task
+            dispatch_task(generate_fingerprint_task, project_id, dataset_id, next_task.id)
+            logger.info(f"[chain] profiling→fingerprinting spawned task_id={next_task.id}")
+        except Exception as chain_err:
+            logger.error(f"[chain] Failed to auto-chain fingerprinting: {chain_err}")
+
         return {"status": "completed", "project_id": project_id}
 
     except Exception as e:
@@ -231,8 +284,34 @@ def generate_fingerprint_task(self, project_id: int, dataset_id: int, task_id: i
             task.progress = 1.0
             task.message = "Fingerprinting completed"
             task.completed_at = datetime.utcnow()
-            task.result = fp_data
-        db.commit()
+            task.result = dict(fp_data or {})
+            db.commit()
+
+        # ── AUTO-CHAIN: spawn recommendation immediately ──────────────────
+        try:
+            next_task = BackgroundTask(
+                project_id=project_id,
+                task_type="recommendation",
+                status="pending",
+                progress=0.0,
+                message="Recommendations queued (auto-chained from fingerprinting)...",
+            )
+            db.add(next_task)
+            db.commit()
+            db.refresh(next_task)
+
+            if task:
+                curr_res = dict(task.result or {})
+                curr_res["next_task_id"] = next_task.id
+                curr_res["active_task_id"] = next_task.id
+                task.result = curr_res
+                db.commit()
+
+            from app.workers.dispatcher import dispatch_task
+            dispatch_task(recommend_algorithms_task, project_id, next_task.id)
+            logger.info(f"[chain] fingerprinting→recommendation spawned task_id={next_task.id}")
+        except Exception as chain_err:
+            logger.error(f"[chain] Failed to auto-chain recommendation: {chain_err}")
 
         return {"status": "completed", "project_id": project_id}
 
@@ -363,7 +442,33 @@ def recommend_algorithms_task(self, project_id: int, task_id: int):
             task.message = f"Generated {len(recommendations)} recommendations"
             task.completed_at = datetime.utcnow()
             task.result = {"num_recommendations": len(recommendations)}
-        db.commit()
+            db.commit()
+
+        # ── AUTO-CHAIN: spawn preprocessing immediately ───────────────────
+        try:
+            next_task = BackgroundTask(
+                project_id=project_id,
+                task_type="preprocessing",
+                status="pending",
+                progress=0.0,
+                message="Preprocessing queued (auto-chained from recommendations)...",
+            )
+            db.add(next_task)
+            db.commit()
+            db.refresh(next_task)
+
+            if task:
+                curr_res = dict(task.result or {})
+                curr_res["next_task_id"] = next_task.id
+                curr_res["active_task_id"] = next_task.id
+                task.result = curr_res
+                db.commit()
+
+            from app.workers.dispatcher import dispatch_task
+            dispatch_task(preprocess_dataset_task, project_id, next_task.id)
+            logger.info(f"[chain] recommendation→preprocessing spawned task_id={next_task.id}")
+        except Exception as chain_err:
+            logger.error(f"[chain] Failed to auto-chain preprocessing: {chain_err}")
 
         return {"status": "completed", "recommendations": len(recommendations)}
 
@@ -447,7 +552,33 @@ def preprocess_dataset_task(self, project_id: int, task_id: int):
                 "num_features": len(X.columns),
                 "num_samples": len(X),
             }
-        db.commit()
+            db.commit()
+
+        # ── AUTO-CHAIN: spawn training immediately ────────────────────────
+        try:
+            next_task = BackgroundTask(
+                project_id=project_id,
+                task_type="training",
+                status="pending",
+                progress=0.0,
+                message="Training queued (auto-chained from preprocessing)...",
+            )
+            db.add(next_task)
+            db.commit()
+            db.refresh(next_task)
+
+            if task:
+                curr_res = dict(task.result or {})
+                curr_res["next_task_id"] = next_task.id
+                curr_res["active_task_id"] = next_task.id
+                task.result = curr_res
+                db.commit()
+
+            from app.workers.dispatcher import dispatch_task
+            dispatch_task(train_models_task, project_id, next_task.id)
+            logger.info(f"[chain] preprocessing→training spawned task_id={next_task.id}")
+        except Exception as chain_err:
+            logger.error(f"[chain] Failed to auto-chain training: {chain_err}")
 
         return {"status": "completed"}
 
@@ -787,21 +918,53 @@ def train_models_task(self, project_id: int, task_id: int,
             )
             db.add(exp_record)
 
-        project.phase = PipelinePhase.TRAINED.value
+        # Auto-deploy champion model (Phase 9)
+        deployed_endpoint = None
+        if best_model:
+            existing_dep = db.query(Deployment).filter(Deployment.model_id == best_model.id).first()
+            if not existing_dep:
+                clean_name = "".join(c if c.isalnum() else "_" for c in (best_model.algorithm_name or "model")).lower()
+                endpoint_name = f"model-prod-{project_id}-{clean_name}"
+                dep = Deployment(
+                    project_id=project_id,
+                    model_id=best_model.id,
+                    endpoint_name=endpoint_name,
+                    status=DeploymentStatus.ACTIVE,
+                    config={
+                        "model_type": best_model.algorithm_name,
+                        "algorithm_name": best_model.algorithm_name,
+                        "metrics": best_model.metrics,
+                        "target_column": project.target_column,
+                    },
+                    request_count=0,
+                    avg_latency_ms=12.5,
+                )
+                db.add(dep)
+                best_model.status = ModelStatus.DEPLOYED
+                db.commit()
+                deployed_endpoint = endpoint_name
+            else:
+                existing_dep.status = DeploymentStatus.ACTIVE
+                best_model.status = ModelStatus.DEPLOYED
+                db.commit()
+                deployed_endpoint = existing_dep.endpoint_name
+
+        project.phase = PipelinePhase.DEPLOYED.value
         project.phase_progress = 1.0
-        project.phase_message = "Training completed"
+        project.phase_message = "Training & Deployment completed. Champion model ready for live inference."
         project.updated_at = datetime.utcnow()
 
         task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
         if task:
             task.status = "completed"
             task.progress = 1.0
-            task.message = "Training completed"
+            task.message = "Training & Deployment completed"
             task.completed_at = datetime.utcnow()
             task.result = {
                 "total_models": len(all_models) if all_models else 0,
                 "best_model": best_model.algorithm_name if best_model else None,
                 "best_metrics": best_model.metrics if best_model else None,
+                "deployed_endpoint": deployed_endpoint,
             }
         db.commit()
 

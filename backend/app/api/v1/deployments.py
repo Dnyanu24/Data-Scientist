@@ -29,18 +29,60 @@ _MODEL_CACHE: Dict[int, Any] = {}
 _PIPELINE_CACHE: Dict[int, Any] = {}
 
 
+def _resolve_artifact_path(path: str) -> str:
+    """Resolve model artifact path against working directories."""
+    if not path:
+        return ""
+    if os.path.exists(path):
+        return path
+    clean = path.lstrip("./\\")
+    candidates = [
+        path,
+        clean,
+        os.path.join("backend", clean),
+        os.path.join("..", clean),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), clean),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "backend", clean),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return path
+
+
 def _get_loaded_model_and_pipeline(model: TrainedModel):
-    """Load model and pipeline from disk or return cached instance."""
+    """Load model and pipeline from disk using joblib or pickle."""
     model_id = model.id
     if model_id not in _MODEL_CACHE:
-        if not model.model_path or not os.path.exists(model.model_path):
+        model_path = _resolve_artifact_path(model.model_path)
+        if not model_path or not os.path.exists(model_path):
             raise HTTPException(status_code=500, detail=f"Model artifact not found at {model.model_path}")
-        with open(model.model_path, "rb") as f:
-            _MODEL_CACHE[model_id] = pickle.load(f)
+        
+        loaded = None
+        try:
+            import joblib
+            loaded = joblib.load(model_path)
+        except Exception:
+            try:
+                with open(model_path, "rb") as f:
+                    loaded = pickle.load(f)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to load model artifact: {e}")
+        _MODEL_CACHE[model_id] = loaded
 
-    if model_id not in _PIPELINE_CACHE and model.pipeline_path and os.path.exists(model.pipeline_path):
-        with open(model.pipeline_path, "rb") as f:
-            data = pickle.load(f)
+    if model_id not in _PIPELINE_CACHE and model.pipeline_path:
+        pipeline_path = _resolve_artifact_path(model.pipeline_path)
+        if pipeline_path and os.path.exists(pipeline_path):
+            try:
+                import joblib
+                data = joblib.load(pipeline_path)
+            except Exception:
+                try:
+                    with open(pipeline_path, "rb") as f:
+                        data = pickle.load(f)
+                except Exception:
+                    data = None
+
             if isinstance(data, PreprocessingPipeline):
                 _PIPELINE_CACHE[model_id] = data
             elif isinstance(data, dict):
@@ -52,7 +94,7 @@ def _get_loaded_model_and_pipeline(model: TrainedModel):
                 p.steps_applied = data.get("steps_applied", [])
                 p.steps_config = data.get("steps_config", [])
                 _PIPELINE_CACHE[model_id] = p
-            else:
+            elif data is not None:
                 _PIPELINE_CACHE[model_id] = data
 
     return _MODEL_CACHE[model_id], _PIPELINE_CACHE.get(model_id)
@@ -101,19 +143,67 @@ async def deploy_model(
     return DeploymentResponse.model_validate(deployment)
 
 
+async def _enrich_deployment(d: Deployment, db: AsyncSession) -> DeploymentResponse:
+    """Enrich deployment with trained model, project, metrics, and input features."""
+    from app.models.models import Dataset
+    data = DeploymentResponse.model_validate(d).model_dump()
+    model = (await db.execute(select(TrainedModel).filter(TrainedModel.id == d.model_id))).scalars().first()
+    project = (await db.execute(select(Project).filter(Project.id == d.project_id))).scalars().first()
+    dataset = (await db.execute(select(Dataset).filter(Dataset.project_id == d.project_id))).scalars().first()
+
+    if model:
+        data["model_name"] = model.name
+        data["algorithm_name"] = model.algorithm_name
+        data["metrics"] = model.metrics or {}
+
+    if project:
+        data["project_name"] = project.name
+        data["problem_type"] = (
+            project.problem_type.value
+            if hasattr(project.problem_type, "value")
+            else str(project.problem_type or "")
+        )
+
+    feature_names = []
+    sample_input = {}
+    if dataset and dataset.columns_info:
+        for c in dataset.columns_info:
+            cname = c.get("name")
+            target_col = project.target_column if project else None
+            if cname and cname != target_col:
+                feature_names.append(cname)
+                sample_val = c.get("sample")
+                if sample_val is not None:
+                    sample_input[cname] = sample_val
+                elif "int" in str(c.get("dtype")):
+                    sample_input[cname] = 3
+                elif "float" in str(c.get("dtype")):
+                    sample_input[cname] = 10.5
+                else:
+                    sample_input[cname] = "Sample"
+
+    if not feature_names and model and model.feature_importance:
+        feature_names = list(model.feature_importance.keys())
+        sample_input = {f: 1.0 for f in feature_names}
+
+    data["feature_names"] = feature_names
+    data["sample_input"] = sample_input
+    return DeploymentResponse(**data)
+
+
 @router.get("/", response_model=List[DeploymentResponse])
 async def list_deployments(
     project_id: int = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """List deployed endpoints."""
+    """List deployed endpoints with live database metrics and metadata."""
     stmt = select(Deployment)
     if project_id:
         stmt = stmt.filter(Deployment.project_id == project_id)
     result = await db.execute(stmt.order_by(Deployment.created_at.desc()))
     deployments = result.scalars().all()
-    return [DeploymentResponse.model_validate(d) for d in deployments]
+    return [await _enrich_deployment(d, db) for d in deployments]
 
 
 @router.get("/{deployment_id}", response_model=DeploymentResponse)
@@ -128,7 +218,7 @@ async def get_deployment(
     deployment = result.scalars().first()
     if not deployment:
         raise HTTPException(status_code=404, detail="Deployment not found")
-    return DeploymentResponse.model_validate(deployment)
+    return await _enrich_deployment(deployment, db)
 
 
 @router.delete("/{deployment_id}")
@@ -149,19 +239,56 @@ async def deactivate_deployment(
     return {"status": "success", "message": f"Deployment {deployment_id} deactivated."}
 
 
-@router.post("/{deployment_id}/predict")
+@router.post("/predict")
+async def run_direct_prediction(
+    request: PredictionCreate,
+    endpoint_name: str = Body(None),
+    deployment_id: int = Body(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Phase 9: Real-time inference against deployed champion model or specified endpoint."""
+    stmt = select(Deployment).filter(Deployment.status == DeploymentStatus.ACTIVE)
+    if deployment_id:
+        stmt = stmt.filter(Deployment.id == deployment_id)
+    elif endpoint_name:
+        is_num = endpoint_name.isdigit()
+        stmt = stmt.filter((Deployment.endpoint_name == endpoint_name) | ((Deployment.id == int(endpoint_name)) if is_num else False))
+    else:
+        stmt = stmt.order_by(Deployment.created_at.desc())
+
+    result = await db.execute(stmt)
+    deployment = result.scalars().first()
+    if not deployment:
+        raise HTTPException(status_code=404, detail="No active deployed model found for prediction.")
+
+    return await run_prediction(deployment.endpoint_name, request, db, current_user)
+
+
+@router.post("/{endpoint_name}/predict")
 async def run_prediction(
-    deployment_id: int,
+    endpoint_name: str,
     request: PredictionCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Phase 9: Real-time single or batch inference against deployed model."""
-    stmt = select(Deployment).filter(Deployment.id == deployment_id)
+    stmt = select(Deployment).filter(Deployment.endpoint_name == endpoint_name)
+    if endpoint_name.isdigit():
+        stmt = select(Deployment).filter(
+            (Deployment.id == int(endpoint_name)) | (Deployment.endpoint_name == endpoint_name)
+        )
     result = await db.execute(stmt)
     deployment = result.scalars().first()
+
+    # Fallback lookup if not found directly
+    if not deployment and endpoint_name.isdigit():
+        alt_stmt = select(Deployment).filter(Deployment.model_id == int(endpoint_name))
+        alt_res = await db.execute(alt_stmt)
+        deployment = alt_res.scalars().first()
+
     if not deployment or deployment.status != DeploymentStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Deployment is not active or does not exist.")
+        raise HTTPException(status_code=400, detail=f"Deployment '{endpoint_name}' is not active or does not exist.")
 
     # Fetch model
     model_stmt = select(TrainedModel).filter(TrainedModel.id == deployment.model_id)

@@ -272,9 +272,16 @@ class DeploymentResponse(BaseModel):
     status: str
     version: int
     request_count: int
-    avg_latency_ms: Optional[float]
-    last_prediction_at: Optional[datetime]
+    avg_latency_ms: Optional[float] = 0.0
+    last_prediction_at: Optional[datetime] = None
     created_at: datetime
+    model_name: Optional[str] = None
+    algorithm_name: Optional[str] = None
+    project_name: Optional[str] = None
+    problem_type: Optional[str] = None
+    metrics: Optional[Dict[str, Any]] = None
+    feature_names: Optional[List[str]] = None
+    sample_input: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -428,6 +435,7 @@ class BackgroundTaskResponse(BaseModel):
     error: Optional[str] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    project_phase: Optional[str] = None
 
     class Config:
         from_attributes = True

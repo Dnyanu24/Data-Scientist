@@ -1,4 +1,4 @@
-"""Training, Progressive Optimization, Model Evaluation & Explainability API."""
+from datetime import datetime
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -105,15 +105,21 @@ async def get_model_leaderboard(
 
     def get_sort_key(m):
         metrics = m.metrics or {}
+        is_best_boost = 1000.0 if m.is_best else 0.0
         if is_classification:
-            return metrics.get("f1_score", metrics.get("accuracy", 0))
-        return -metrics.get("mse", metrics.get("rmse", float("inf")))
+            primary = float(metrics.get("f1_score", metrics.get("accuracy", 0.0)))
+            return is_best_boost + primary
+        # Regression: R2 score is primary metric
+        if "r2" in metrics and metrics["r2"] is not None:
+            return is_best_boost + float(metrics["r2"])
+        return is_best_boost - float(metrics.get("rmse", metrics.get("mse", float("inf"))))
 
     sorted_models = sorted(models, key=get_sort_key, reverse=True)
     return [TrainedModelResponse.model_validate(m) for m in sorted_models]
 
 
 @router.get("/models/{model_id}", response_model=TrainedModelResponse)
+@router.get("/experiments/models/{model_id}", response_model=TrainedModelResponse)
 async def get_model_details(
     model_id: int,
     db: AsyncSession = Depends(get_db),
@@ -129,6 +135,7 @@ async def get_model_details(
 
 
 @router.get("/models/{model_id}/evaluation")
+@router.get("/experiments/models/{model_id}/evaluation")
 async def get_model_evaluation(
     model_id: int,
     db: AsyncSession = Depends(get_db),
@@ -156,6 +163,7 @@ async def get_model_evaluation(
 
 
 @router.get("/models/{model_id}/explain")
+@router.get("/experiments/models/{model_id}/explain")
 async def get_model_explainability(
     model_id: int,
     db: AsyncSession = Depends(get_db),
@@ -182,23 +190,63 @@ async def get_model_explainability(
 
 
 @router.post("/models/{model_id}/set-best")
+@router.post("/experiments/models/{model_id}/set-best")
 async def set_best_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Designate a specific model as the champion / best model for deployment."""
+    """Designate a specific model as champion and advance project to Phase 9 (Deployed)."""
     stmt = select(TrainedModel).filter(TrainedModel.id == model_id)
     result = await db.execute(stmt)
     model = result.scalars().first()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    # Clear is_best from other models in project
+    # Clear is_best from other models in project and set on this model
     all_stmt = select(TrainedModel).filter(TrainedModel.project_id == model.project_id)
     all_res = await db.execute(all_stmt)
     for m in all_res.scalars().all():
         m.is_best = (m.id == model_id)
+        if m.id == model_id:
+            m.status = ModelStatus.REGISTERED
+
+    # Automatically update project phase to Phase 9 (Deployed)
+    proj_stmt = select(Project).filter(Project.id == model.project_id)
+    proj_res = await db.execute(proj_stmt)
+    project = proj_res.scalars().first()
+    if project:
+        project.phase = PipelinePhase.DEPLOYED.value
+        project.phase_progress = 1.0
+        project.phase_message = f"Model {model.name} designated as champion and deployed."
+        project.updated_at = datetime.utcnow()
+
+    # Automatically create or activate deployment for this champion model
+    from app.models.models import Deployment, DeploymentStatus
+    dep_stmt = select(Deployment).filter(Deployment.model_id == model.id)
+    dep_res = await db.execute(dep_stmt)
+    deployment = dep_res.scalars().first()
+    if not deployment:
+        deployment = Deployment(
+            project_id=model.project_id,
+            model_id=model.id,
+            endpoint_name=f"endpoint-{model.algorithm_name}-{model.id}",
+            status=DeploymentStatus.ACTIVE,
+            version=model.version or 1,
+            config={"algorithm": model.algorithm_name, "is_best": True},
+            request_count=0,
+            avg_latency_ms=0.0,
+        )
+        db.add(deployment)
+    else:
+        deployment.status = DeploymentStatus.ACTIVE
 
     await db.commit()
-    return {"status": "success", "message": f"Model {model.name} designated as best model."}
+    return {
+        "status": "success",
+        "message": f"Model {model.name} designated as best model and ready for deployment.",
+        "model_id": model_id,
+        "project_phase": PipelinePhase.DEPLOYED.value,
+        "deployment_id": deployment.id if deployment else None,
+        "endpoint_name": deployment.endpoint_name if deployment else None,
+    }

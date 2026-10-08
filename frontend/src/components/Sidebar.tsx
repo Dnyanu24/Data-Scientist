@@ -81,7 +81,7 @@ export default function Sidebar() {
             <div className="user-name">{user?.full_name || user?.username || 'Data Scientist'}</div>
             <div className="user-email">{user?.email || 'admin@aidatascientist.io'}</div>
           </div>
-          <LogOut size={14} style={{ color: '#94a3b8', flexShrink: 0 }} title="Logout" />
+          <LogOut size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
         </div>
       </div>
     </aside>

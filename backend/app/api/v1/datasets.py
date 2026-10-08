@@ -16,13 +16,18 @@ from app.models.models import (
 )
 from app.schemas.schemas import DatasetResponse, DatasetFingerprintResponse
 from app.workers.dispatcher import dispatch_task
-from app.workers.tasks import profile_dataset_task, generate_fingerprint_task
+from app.workers.tasks import (
+    profile_dataset_task,
+    generate_fingerprint_task,
+    recommend_algorithms_task,
+    preprocess_dataset_task,
+)
 from app.ml.fingerprinting import fingerprinter
 
 router = APIRouter()
 
 
-@router.post("/upload", response_model=DatasetResponse)
+@router.post("/upload")
 async def upload_dataset(
     project_id: int = Form(...),
     file: UploadFile = File(...),
@@ -112,7 +117,32 @@ async def upload_dataset(
 
     await db.commit()
     await db.refresh(dataset)
-    return DatasetResponse.model_validate(dataset)
+
+    # ── AUTO-START: immediately spawn profiling so pipeline flows into Phase 2 ──
+    try:
+        profile_task = BackgroundTask(
+            project_id=project_id,
+            task_type="profiling",
+            status="pending",
+            progress=0.0,
+            message="Profiling queued automatically after upload...",
+        )
+        db.add(profile_task)
+        await db.commit()
+        await db.refresh(profile_task)
+        dispatch_task(profile_dataset_task, project_id, dataset.id, profile_task.id)
+        auto_task_id = profile_task.id
+    except Exception as e:
+        auto_task_id = None
+        import logging
+        logging.getLogger(__name__).warning(f"[upload] Failed to auto-spawn profiling: {e}")
+
+    response = DatasetResponse.model_validate(dataset)
+    # Attach auto_task_id so the frontend can start polling immediately
+    result = response.model_dump(mode="json")
+    result["task_id"] = auto_task_id
+    result["auto_profile_task_id"] = auto_task_id
+    return result
 
 
 @router.get("/project/{project_id}", response_model=List[DatasetResponse])
@@ -291,7 +321,12 @@ async def get_similar_historical_datasets(
     result = await db.execute(stmt)
     fp = result.scalars().first()
     if not fp or not fp.embedding:
-        raise HTTPException(status_code=400, detail="Fingerprint embedding not available. Run fingerprinting first.")
+        return {
+            "dataset_id": dataset_id,
+            "total_historical_records_searched": 0,
+            "similar_datasets": [],
+            "message": "Dataset has not been fingerprinted yet.",
+        }
 
     target_embedding = list(fp.embedding)
 

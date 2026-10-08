@@ -52,8 +52,9 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)) -> A
 
 @router.post("/login", response_model=TokenResponse)
 async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)) -> Any:
-    """Login with email and password."""
-    result = await db.execute(select(User).filter(User.email == login_data.email))
+    result = await db.execute(
+        select(User).filter((User.email == login_data.email) | (User.username == login_data.email))
+    )
     user = result.scalars().first()
 
     if not user or not verify_password(login_data.password, user.hashed_password):

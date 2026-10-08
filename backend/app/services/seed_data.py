@@ -2,7 +2,8 @@
 import logging
 from datetime import datetime
 from app.database.session import SyncSessionLocal
-from app.models.models import AlgorithmKnowledge, ExperienceRecord, ProblemType
+from app.models.models import AlgorithmKnowledge, ExperienceRecord, ProblemType, User
+from app.core.security import get_password_hash
 from app.ml.recommendation import ALGORITHM_REGISTRY
 from app.ml.fingerprinting import fingerprinter
 
@@ -202,11 +203,43 @@ def seed_historical_experiences(db):
     logger.info(f"Seeded {len(historical_datasets)} historical experience records.")
 
 
+def seed_default_user(db):
+    """Auto-seed default demo admin user if missing or ensure valid credentials."""
+    try:
+        from app.core.security import verify_password
+        admin_user = db.query(User).filter(User.email == "admin@aidatascientist.io").first()
+        if not admin_user:
+            logger.info("No admin user found. Seeding default demo admin user...")
+            admin_user = User(
+                email="admin@aidatascientist.io",
+                username="admin@aidatascientist.io",
+                full_name="Admin User",
+                hashed_password=get_password_hash("admin"),
+                is_active=True,
+            )
+            db.add(admin_user)
+            db.commit()
+            logger.info("Default admin user created: admin@aidatascientist.io / admin")
+        else:
+            if not verify_password("admin", admin_user.hashed_password):
+                logger.info("Updating admin user password to default 'admin'...")
+                admin_user.hashed_password = get_password_hash("admin")
+                admin_user.is_active = True
+                db.commit()
+                logger.info("Default admin user password synchronized to 'admin'.")
+            else:
+                logger.info("Default admin user exists with valid credentials.")
+    except Exception as e:
+        logger.error(f"Failed to seed default admin user: {e}")
+        db.rollback()
+
+
 def seed_all():
-    """Seed both algorithm knowledge and meta-learning experiences."""
+    """Seed algorithm knowledge, meta-learning experiences, and default admin user."""
     db = SyncSessionLocal()
     try:
         seed_algorithm_knowledge(db)
         seed_historical_experiences(db)
+        seed_default_user(db)
     finally:
         db.close()

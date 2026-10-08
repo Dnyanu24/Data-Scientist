@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "AI Data Scientist"
     APP_ENV: str = "development"
     DEBUG: bool = True
-    SECRET_KEY: str = "change-me-in-production"
-    ALGORITHM: str = "HS256"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", os.getenv("JWT_SECRET", "dev_secret_key_change_in_production_12345"))
+    ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 

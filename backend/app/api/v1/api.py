@@ -1,4 +1,4 @@
-"""V1 API Router consolidating all lifecycle phase endpoints."""
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter
 
 from app.api.v1 import (
