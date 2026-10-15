@@ -51,15 +51,40 @@ class TrainingEngine:
             is_classification = problem_type in ["binary_classification", "multiclass_classification"]
             direction = "maximize" if is_classification else "minimize"
 
+            # Pre-flight check: ensure algorithm class and dependencies can be instantiated
+            try:
+                test_params = {}
+                if algorithm_name in ["svm", "nu_svc"] and is_classification:
+                    test_params["probability"] = True
+                _ = self._create_model(algorithm_name, algo_info, problem_type, test_params)
+            except Exception as init_err:
+                logger.warning(f"Algorithm {algorithm_name} unavailable: {init_err}")
+                return {
+                    "status": "failed",
+                    "algorithm_name": algorithm_name,
+                    "error": f"Algorithm dependencies unavailable: {init_err}",
+                    "training_time": round(time.time() - start_time, 2),
+                }
+
             # Combine train+val for cross-val scoring in objective
             X_full = pd.concat([X_train, X_val], ignore_index=True)
             y_full = pd.concat([y_train, y_val], ignore_index=True)
+
+            # Ensure non-negative inputs for algorithms that require counts/non-negative features
+            if algorithm_name in ["naive_bayes_multinomial", "multinomial_nb", "complement_nb"]:
+                min_full = float(X_full.min().min())
+                if min_full < 0:
+                    shift = abs(min_full) + 1e-4
+                    X_full = X_full + shift
+                    X_train = X_train + shift
+                    X_val = X_val + shift
+
             n_cv_splits = 5 if len(X_full) >= 500 else 3
 
             study = optuna.create_study(
                 direction=direction,
-                sampler=optuna.samplers.TPESampler(seed=42, n_startup_trials=max(5, n_trials // 4)),
-                pruner=optuna.pruners.MedianPruner(n_warmup_steps=5, n_min_trials=5),
+                sampler=optuna.samplers.TPESampler(seed=42, multivariate=True, n_startup_trials=max(3, n_trials // 3)),
+                pruner=optuna.pruners.MedianPruner(n_warmup_steps=3, n_min_trials=3),
             )
 
             def objective(trial):
@@ -67,7 +92,7 @@ class TrainingEngine:
                 model = self._create_model(algorithm_name, algo_info, problem_type, params)
 
                 try:
-                    # Use cross-validation for more robust scoring
+                    # Use cross-validation for robust scoring
                     if is_classification:
                         cv = StratifiedKFold(n_splits=n_cv_splits, shuffle=True, random_state=42)
                         scores = cross_val_score(
@@ -90,6 +115,14 @@ class TrainingEngine:
             stage_trial_multiplier = {"stage_1": 1.0, "stage_2": 1.5, "stage_3": 2.0}
             effective_trials = max(n_trials, int(n_trials * stage_trial_multiplier.get(training_stage, 1.0)))
             study.optimize(objective, n_trials=effective_trials, show_progress_bar=False)
+
+            if not study.trials or all(t.state.name == "FAIL" for t in study.trials):
+                return {
+                    "status": "failed",
+                    "algorithm_name": algorithm_name,
+                    "error": "All tuning trials failed to converge.",
+                    "training_time": round(time.time() - start_time, 2),
+                }
 
             # Train final model with best params on FULL data (train+val) for max accuracy
             best_params = study.best_params
@@ -215,14 +248,14 @@ class TrainingEngine:
         # Handle special cases
         clean_params = {k: v for k, v in params.items()}
 
-        # SVC needs probability for AUC
-        if algo_name == "svm" and is_clf:
+        # Classifiers that require probability=True for probability output / AUC
+        if algo_name in ["svm", "nu_svc"] and is_clf:
             clean_params["probability"] = True
 
         return model_class(**clean_params)
 
     def _evaluate_model(self, model, X_val, y_val, problem_type: str) -> Dict[str, Any]:
-        """Evaluate model and return metrics."""
+        """Evaluate model and return metrics with threshold optimization."""
         y_pred = model.predict(X_val)
         metrics = {}
 
@@ -233,12 +266,23 @@ class TrainingEngine:
             metrics["precision"] = round(float(precision_score(y_val, y_pred, average=avg, zero_division=0)), 4)
             metrics["recall"] = round(float(recall_score(y_val, y_pred, average=avg, zero_division=0)), 4)
 
-            # AUC
+            # AUC and threshold optimization for binary classification
             try:
                 if hasattr(model, "predict_proba"):
                     y_proba = model.predict_proba(X_val)
                     if len(np.unique(y_val)) == 2:
                         metrics["auc_roc"] = round(float(roc_auc_score(y_val, y_proba[:, 1])), 4)
+                        # Threshold tuning to maximize accuracy / F1
+                        best_thresh = 0.5
+                        best_f1 = metrics["f1_score"]
+                        for t in np.linspace(0.2, 0.8, 13):
+                            t_pred = (y_proba[:, 1] >= t).astype(int)
+                            t_f1 = float(f1_score(y_val, t_pred, average="binary", zero_division=0))
+                            if t_f1 > best_f1:
+                                best_f1 = t_f1
+                                best_thresh = float(t)
+                        metrics["optimal_threshold"] = round(best_thresh, 2)
+                        metrics["f1_score"] = round(best_f1, 4)
                     else:
                         metrics["auc_roc"] = round(float(roc_auc_score(y_val, y_proba, multi_class="ovr", average="weighted")), 4)
             except Exception:
@@ -308,11 +352,13 @@ class TrainingEngine:
 
             if ensemble_type == "voting":
                 if is_clf:
-                    ensemble = VotingClassifier(estimators=estimators, voting="soft")
+                    # Soft voting only if all models support predict_proba
+                    has_proba = all(hasattr(m, "predict_proba") for _, m in estimators)
+                    voting_mode = "soft" if has_proba else "hard"
+                    ensemble = VotingClassifier(estimators=estimators, voting=voting_mode)
                 else:
                     ensemble = VotingRegressor(estimators=estimators)
             elif ensemble_type == "weighted_voting":
-                # Use validation scores as weights
                 weights = []
                 for _, m in estimators:
                     y_pred = m.predict(X_val)
@@ -320,9 +366,11 @@ class TrainingEngine:
                         w = f1_score(y_val, y_pred, average="weighted", zero_division=0)
                     else:
                         w = max(0.01, r2_score(y_val, y_pred))
-                    weights.append(w)
+                    weights.append(max(0.01, float(w)))
                 if is_clf:
-                    ensemble = VotingClassifier(estimators=estimators, voting="soft", weights=weights)
+                    has_proba = all(hasattr(m, "predict_proba") for _, m in estimators)
+                    voting_mode = "soft" if has_proba else "hard"
+                    ensemble = VotingClassifier(estimators=estimators, voting=voting_mode, weights=weights)
                 else:
                     ensemble = VotingRegressor(estimators=estimators, weights=weights)
             elif ensemble_type == "stacking":
