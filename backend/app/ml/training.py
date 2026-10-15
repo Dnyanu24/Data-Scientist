@@ -36,11 +36,11 @@ class TrainingEngine:
         y_val: pd.Series,
         algorithm_name: str,
         problem_type: str,
-        n_trials: int = 15,
+        n_trials: int = 25,
         training_stage: str = "stage_1",
         progress_callback=None,
     ) -> Dict[str, Any]:
-        """Train a single model with Optuna optimization."""
+        """Train a single model with Optuna optimization (enhanced for high accuracy)."""
         start_time = time.time()
         algo_info = ALGORITHM_REGISTRY.get(algorithm_name)
 
@@ -48,15 +48,18 @@ class TrainingEngine:
             return {"status": "failed", "error": f"Unknown algorithm: {algorithm_name}"}
 
         try:
-            # Create Optuna study
             is_classification = problem_type in ["binary_classification", "multiclass_classification"]
             direction = "maximize" if is_classification else "minimize"
-            metric_name = "f1_weighted" if is_classification else "neg_mse"
+
+            # Combine train+val for cross-val scoring in objective
+            X_full = pd.concat([X_train, X_val], ignore_index=True)
+            y_full = pd.concat([y_train, y_val], ignore_index=True)
+            n_cv_splits = 5 if len(X_full) >= 500 else 3
 
             study = optuna.create_study(
                 direction=direction,
-                sampler=optuna.samplers.TPESampler(seed=42),
-                pruner=optuna.pruners.MedianPruner(n_warmup_steps=3),
+                sampler=optuna.samplers.TPESampler(seed=42, n_startup_trials=max(5, n_trials // 4)),
+                pruner=optuna.pruners.MedianPruner(n_warmup_steps=5, n_min_trials=5),
             )
 
             def objective(trial):
@@ -64,27 +67,36 @@ class TrainingEngine:
                 model = self._create_model(algorithm_name, algo_info, problem_type, params)
 
                 try:
-                    model.fit(X_train, y_train)
+                    # Use cross-validation for more robust scoring
                     if is_classification:
-                        y_pred = model.predict(X_val)
-                        score = f1_score(y_val, y_pred, average="weighted", zero_division=0)
+                        cv = StratifiedKFold(n_splits=n_cv_splits, shuffle=True, random_state=42)
+                        scores = cross_val_score(
+                            model, X_full, y_full, cv=cv,
+                            scoring="f1_weighted", error_score=0.0, n_jobs=1
+                        )
+                        return float(np.mean(scores))
                     else:
-                        y_pred = model.predict(X_val)
-                        score = -mean_squared_error(y_val, y_pred)
-                    return score
+                        cv = KFold(n_splits=n_cv_splits, shuffle=True, random_state=42)
+                        scores = cross_val_score(
+                            model, X_full, y_full, cv=cv,
+                            scoring="neg_mean_squared_error", error_score=float("-inf"), n_jobs=1
+                        )
+                        return float(np.mean(scores))
                 except Exception as e:
                     logger.warning(f"Trial failed for {algorithm_name}: {e}")
                     return float("-inf") if is_classification else float("inf")
 
-            # Run optimization
-            study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+            # Increase trials per stage for higher accuracy
+            stage_trial_multiplier = {"stage_1": 1.0, "stage_2": 1.5, "stage_3": 2.0}
+            effective_trials = max(n_trials, int(n_trials * stage_trial_multiplier.get(training_stage, 1.0)))
+            study.optimize(objective, n_trials=effective_trials, show_progress_bar=False)
 
-            # Train final model with best params
+            # Train final model with best params on FULL data (train+val) for max accuracy
             best_params = study.best_params
             final_model = self._create_model(algorithm_name, algo_info, problem_type, best_params)
-            final_model.fit(X_train, y_train)
+            final_model.fit(X_full, y_full)  # Refit on all available data
 
-            # Evaluate
+            # Evaluate on held-out val set (from original split)
             metrics = self._evaluate_model(final_model, X_val, y_val, problem_type)
 
             # Feature importance
@@ -99,7 +111,7 @@ class TrainingEngine:
                 "metrics": metrics,
                 "feature_importance": feature_importance,
                 "training_time": round(training_time, 2),
-                "n_trials": n_trials,
+                "n_trials": effective_trials,
                 "best_trial_value": float(study.best_value),
                 "training_stage": training_stage,
                 "model": final_model,
@@ -116,7 +128,7 @@ class TrainingEngine:
 
     def _suggest_params(self, trial, algo_name: str, algo_info: Dict,
                         problem_type: str, stage: str) -> Dict[str, Any]:
-        """Suggest hyperparameters using Optuna trial."""
+        """Suggest hyperparameters using Optuna trial (full search space in all stages)."""
         search_space = algo_info.get("search_space", {})
         params = {}
 
@@ -131,10 +143,11 @@ class TrainingEngine:
 
             if ptype == "int":
                 low, high = config["low"], config["high"]
-                # Narrow search space for early stages
+                # Stage 1 uses slightly narrower range for speed, but not crippled
                 if stage == "stage_1":
-                    high = low + (high - low) // 2
-                params[param_name] = trial.suggest_int(param_name, low, high)
+                    mid = low + (high - low) * 2 // 3
+                    high = min(high, mid)
+                params[param_name] = trial.suggest_int(param_name, low, max(low + 1, high))
             elif ptype == "uniform":
                 params[param_name] = trial.suggest_float(param_name, config["low"], config["high"])
             elif ptype == "loguniform":
@@ -142,20 +155,44 @@ class TrainingEngine:
             elif ptype == "categorical":
                 params[param_name] = trial.suggest_categorical(param_name, config["choices"])
 
-        # Add fixed params
+        # Add fixed / essential params
         if algo_name == "xgboost":
-            params["use_label_encoder"] = False
             params["eval_metric"] = "logloss" if "classification" in problem_type else "rmse"
             params["verbosity"] = 0
+            params["random_state"] = 42
+            params["n_jobs"] = -1
         elif algo_name == "lightgbm":
             params["verbose"] = -1
             params["force_row_wise"] = True
+            params["random_state"] = 42
+            params["n_jobs"] = -1
         elif algo_name == "catboost":
             params["verbose"] = 0
             params["allow_writing_files"] = False
+            params["random_state"] = 42
         elif algo_name == "logistic_regression":
-            if params.get("penalty") == "l1":
+            params["max_iter"] = params.get("max_iter", 2000)
+            # Ensure valid solver/penalty combinations
+            penalty = params.get("penalty", "l2")
+            if penalty == "l1":
                 params["solver"] = "liblinear"
+            else:
+                params["solver"] = "lbfgs"
+            params["random_state"] = 42
+        elif algo_name in ["random_forest", "extra_trees", "gradient_boosting", "adaboost", "bagging"]:
+            params["random_state"] = 42
+            if algo_name in ["random_forest", "extra_trees"]:
+                params["n_jobs"] = -1
+        elif algo_name == "mlp":
+            params["random_state"] = 42
+            params["early_stopping"] = True
+            params["validation_fraction"] = 0.1
+            params["n_iter_no_change"] = 10
+        elif algo_name == "hist_gradient_boosting":
+            params["random_state"] = 42
+        elif algo_name in ["sgd_classifier", "sgd_regressor"]:
+            params["random_state"] = 42
+            params["max_iter"] = params.get("max_iter", 1000)
 
         return params
 

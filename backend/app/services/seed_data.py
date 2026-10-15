@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 
 
 def seed_algorithm_knowledge(db):
-    """Seed the algorithm knowledge base from ALGORITHM_REGISTRY."""
-    existing_count = db.query(AlgorithmKnowledge).count()
-    if existing_count > 0:
-        return
+    """Seed and sync the algorithm knowledge base from ALGORITHM_REGISTRY."""
+    existing_algos = {a.name: a for a in db.query(AlgorithmKnowledge).all()}
+    added_count = 0
 
-    logger.info("Seeding Algorithm Knowledge Base...")
     for name, info in ALGORITHM_REGISTRY.items():
+        if name in existing_algos:
+            continue
         supports = info.get("supports", [])
         algo = AlgorithmKnowledge(
             name=name,
@@ -39,13 +39,16 @@ def seed_algorithm_knowledge(db):
             memory_usage=info.get("memory_usage", "medium"),
             scalability=info.get("scalability", "medium"),
             search_space=info.get("search_space", {}),
-            description=f"Standard ML algorithm {info.get('display_name')} from {info.get('library')}",
+            description=f"Advanced ML algorithm {info.get('display_name')} from {info.get('library')}",
             strengths=info.get("best_for", []),
-            weaknesses=["May require feature scaling" if not info.get("category") in ["tree", "ensemble"] else "Higher compute overhead"],
+            weaknesses=["May require feature scaling" if not info.get("category") in ["tree", "ensemble", "boosting"] else "Higher compute overhead"],
         )
         db.add(algo)
-    db.commit()
-    logger.info(f"Seeded {len(ALGORITHM_REGISTRY)} algorithms.")
+        added_count += 1
+
+    if added_count > 0:
+        db.commit()
+        logger.info(f"Seeded {added_count} new algorithms into Knowledge Base (Total: {len(ALGORITHM_REGISTRY)}).")
 
 
 def seed_historical_experiences(db):

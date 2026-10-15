@@ -38,6 +38,21 @@ async def start_training(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Check if a training task is already running or pending for this project
+    existing_stmt = select(BackgroundTask).filter(
+        BackgroundTask.project_id == project_id,
+        BackgroundTask.task_type == "training",
+        BackgroundTask.status.in_(["pending", "running"]),
+    )
+    existing_res = await db.execute(existing_stmt)
+    existing_task = existing_res.scalars().first()
+    if existing_task:
+        return {
+            "status": "in_progress",
+            "task_id": existing_task.id,
+            "message": "Intelligent training pipeline is already in progress.",
+        }
+
     task = BackgroundTask(
         project_id=project_id,
         task_type="training",

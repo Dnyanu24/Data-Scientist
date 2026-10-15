@@ -70,38 +70,38 @@ export const datasetsApi = {
 export const recommendationsApi = {
   // POST /api/v1/projects/{project_id}/recommend
   trigger: (projectId: number) =>
-    api.post(`projects/${projectId}/recommend`),
+    api.post(`/projects/${projectId}/recommend`),
 
   // GET /api/v1/projects/{project_id}/recommendations
   list: (projectId: number) =>
-    api.get(`projects/${projectId}/recommendations`),
+    api.get(`/projects/${projectId}/recommendations`),
 
   // POST /api/v1/projects/{project_id}/preprocessing/generate
   generatePreprocessing: (projectId: number) =>
-    api.post(`projects/${projectId}/preprocessing/generate`),
+    api.post(`/projects/${projectId}/preprocessing/generate`),
 
   // GET /api/v1/projects/{project_id}/preprocessing
   getPreprocessing: (projectId: number) =>
-    api.get(`projects/${projectId}/preprocessing`),
+    api.get(`/projects/${projectId}/preprocessing`),
 
   // PUT /api/v1/projects/{project_id}/preprocessing
   updatePreprocessing: (projectId: number, data: Record<string, unknown>) =>
-    api.put(`projects/${projectId}/preprocessing`, data),
+    api.put(`/projects/${projectId}/preprocessing`, data),
 };
 
 /* ─── Experiments / Training ─── */
 export const experimentsApi = {
   // If Swagger (/docs) shows /api/v1/projects/{projectId}/leaderboard:
   leaderboard: (projectId: number) =>
-    api.get(`projects/${projectId}/leaderboard`),
+    api.get(`/projects/${projectId}/leaderboard`),
 
   // If Swagger shows /api/v1/projects/{projectId}/train:
   startTraining: (projectId: number, config?: Record<string, unknown>) =>
-    api.post(`projects/${projectId}/train`, config || {}),
+    api.post(`/projects/${projectId}/train`, config || {}),
 
   // If Swagger shows /api/v1/projects/{projectId}/experiments:
   listExperiments: (projectId: number) =>
-    api.get(`projects/${projectId}/experiments`),
+    api.get(`/projects/${projectId}/experiments`),
 
   getModel: (modelId: number) => api.get(`/experiments/models/${modelId}`),
   getEvaluation: (modelId: number) => api.get(`/experiments/models/${modelId}/evaluation`),

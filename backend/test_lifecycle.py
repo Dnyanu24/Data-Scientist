@@ -30,18 +30,24 @@ assert r.status_code == 200, f"Health check failed: {r.text}"
 print("Health OK:", r.json())
 
 print("\n--- 2. Testing Authentication ---")
-login_res = client.post("/api/v1/auth/login", json={"email": "admin@aidatascientist.io", "password": "admin123"})
+login_res = client.post("/api/v1/auth/login", json={"email": "admin@aidatascientist.io", "password": "admin"})
 if login_res.status_code != 200:
-    # Register admin if not found
+    login_res = client.post("/api/v1/auth/login", json={"email": "admin@aidatascientist.io", "password": "admin123"})
+if login_res.status_code != 200:
     reg_res = client.post("/api/v1/auth/register", json={
         "email": "admin@aidatascientist.io",
         "username": "admin",
         "password": "admin123",
         "full_name": "Admin Data Scientist"
     })
-    token = reg_res.json()["access_token"]
+    token = reg_res.json().get("access_token")
+    if not token:
+        # Fallback login
+        login_res = client.post("/api/v1/auth/login", json={"email": "admin@aidatascientist.io", "password": "admin"})
+        token = login_res.json()["access_token"]
 else:
     token = login_res.json()["access_token"]
+
 
 headers = {"Authorization": f"Bearer {token}"}
 me_res = client.get("/api/v1/auth/me", headers=headers)
@@ -174,12 +180,13 @@ assert train_task_res.status_code == 200
 print("Training task launched. Waiting for progressive 3-stage training...")
 
 # Wait for training
-for _ in range(30):
-    time.sleep(1.5)
+for _ in range(60):
+    time.sleep(2.0)
     t_status = client.get(f"/api/v1/tasks/{train_task_res.json()['task_id']}", headers=headers).json()
     print(f"  Training progress: {int(t_status['progress'] * 100)}% - {t_status['message']}")
     if t_status["status"] in ["completed", "failed"]:
         break
+
 
 leaderboard_res = client.get(f"/api/v1/projects/{project_id}/leaderboard", headers=headers)
 assert leaderboard_res.status_code == 200

@@ -177,27 +177,36 @@ def profile_dataset_task(self, project_id: int, dataset_id: int, task_id: int):
 
         # ── AUTO-CHAIN: spawn fingerprinting immediately ──────────────────
         try:
-            next_task = BackgroundTask(
-                project_id=project_id,
-                task_type="fingerprinting",
-                status="pending",
-                progress=0.0,
-                message="Fingerprinting queued (auto-chained from profiling)...",
-            )
-            db.add(next_task)
-            db.commit()
-            db.refresh(next_task)
+            active_fp = db.query(BackgroundTask).filter(
+                BackgroundTask.project_id == project_id,
+                BackgroundTask.task_type == "fingerprinting",
+                BackgroundTask.status.in_(["pending", "running"]),
+            ).first()
 
-            if task:
-                curr_res = dict(task.result or {})
-                curr_res["next_task_id"] = next_task.id
-                curr_res["active_task_id"] = next_task.id
-                task.result = curr_res
+            if not active_fp:
+                next_task = BackgroundTask(
+                    project_id=project_id,
+                    task_type="fingerprinting",
+                    status="pending",
+                    progress=0.0,
+                    message="Fingerprinting queued (auto-chained from profiling)...",
+                )
+                db.add(next_task)
                 db.commit()
+                db.refresh(next_task)
 
-            from app.workers.dispatcher import dispatch_task
-            dispatch_task(generate_fingerprint_task, project_id, dataset_id, next_task.id)
-            logger.info(f"[chain] profiling→fingerprinting spawned task_id={next_task.id}")
+                if task:
+                    curr_res = dict(task.result or {})
+                    curr_res["next_task_id"] = next_task.id
+                    curr_res["active_task_id"] = next_task.id
+                    task.result = curr_res
+                    db.commit()
+
+                from app.workers.dispatcher import dispatch_task
+                dispatch_task(generate_fingerprint_task, project_id, dataset_id, next_task.id)
+                logger.info(f"[chain] profiling→fingerprinting spawned task_id={next_task.id}")
+            else:
+                logger.info(f"[chain] fingerprinting already active task_id={active_fp.id}")
         except Exception as chain_err:
             logger.error(f"[chain] Failed to auto-chain fingerprinting: {chain_err}")
 
@@ -289,27 +298,36 @@ def generate_fingerprint_task(self, project_id: int, dataset_id: int, task_id: i
 
         # ── AUTO-CHAIN: spawn recommendation immediately ──────────────────
         try:
-            next_task = BackgroundTask(
-                project_id=project_id,
-                task_type="recommendation",
-                status="pending",
-                progress=0.0,
-                message="Recommendations queued (auto-chained from fingerprinting)...",
-            )
-            db.add(next_task)
-            db.commit()
-            db.refresh(next_task)
+            active_rec = db.query(BackgroundTask).filter(
+                BackgroundTask.project_id == project_id,
+                BackgroundTask.task_type == "recommendation",
+                BackgroundTask.status.in_(["pending", "running"]),
+            ).first()
 
-            if task:
-                curr_res = dict(task.result or {})
-                curr_res["next_task_id"] = next_task.id
-                curr_res["active_task_id"] = next_task.id
-                task.result = curr_res
+            if not active_rec:
+                next_task = BackgroundTask(
+                    project_id=project_id,
+                    task_type="recommendation",
+                    status="pending",
+                    progress=0.0,
+                    message="Recommendations queued (auto-chained from fingerprinting)...",
+                )
+                db.add(next_task)
                 db.commit()
+                db.refresh(next_task)
 
-            from app.workers.dispatcher import dispatch_task
-            dispatch_task(recommend_algorithms_task, project_id, next_task.id)
-            logger.info(f"[chain] fingerprinting→recommendation spawned task_id={next_task.id}")
+                if task:
+                    curr_res = dict(task.result or {})
+                    curr_res["next_task_id"] = next_task.id
+                    curr_res["active_task_id"] = next_task.id
+                    task.result = curr_res
+                    db.commit()
+
+                from app.workers.dispatcher import dispatch_task
+                dispatch_task(recommend_algorithms_task, project_id, next_task.id)
+                logger.info(f"[chain] fingerprinting→recommendation spawned task_id={next_task.id}")
+            else:
+                logger.info(f"[chain] recommendation already active task_id={active_rec.id}")
         except Exception as chain_err:
             logger.error(f"[chain] Failed to auto-chain recommendation: {chain_err}")
 
@@ -446,27 +464,36 @@ def recommend_algorithms_task(self, project_id: int, task_id: int):
 
         # ── AUTO-CHAIN: spawn preprocessing immediately ───────────────────
         try:
-            next_task = BackgroundTask(
-                project_id=project_id,
-                task_type="preprocessing",
-                status="pending",
-                progress=0.0,
-                message="Preprocessing queued (auto-chained from recommendations)...",
-            )
-            db.add(next_task)
-            db.commit()
-            db.refresh(next_task)
+            active_prep = db.query(BackgroundTask).filter(
+                BackgroundTask.project_id == project_id,
+                BackgroundTask.task_type == "preprocessing",
+                BackgroundTask.status.in_(["pending", "running"]),
+            ).first()
 
-            if task:
-                curr_res = dict(task.result or {})
-                curr_res["next_task_id"] = next_task.id
-                curr_res["active_task_id"] = next_task.id
-                task.result = curr_res
+            if not active_prep:
+                next_task = BackgroundTask(
+                    project_id=project_id,
+                    task_type="preprocessing",
+                    status="pending",
+                    progress=0.0,
+                    message="Preprocessing queued (auto-chained from recommendations)...",
+                )
+                db.add(next_task)
                 db.commit()
+                db.refresh(next_task)
 
-            from app.workers.dispatcher import dispatch_task
-            dispatch_task(preprocess_dataset_task, project_id, next_task.id)
-            logger.info(f"[chain] recommendation→preprocessing spawned task_id={next_task.id}")
+                if task:
+                    curr_res = dict(task.result or {})
+                    curr_res["next_task_id"] = next_task.id
+                    curr_res["active_task_id"] = next_task.id
+                    task.result = curr_res
+                    db.commit()
+
+                from app.workers.dispatcher import dispatch_task
+                dispatch_task(preprocess_dataset_task, project_id, next_task.id)
+                logger.info(f"[chain] recommendation→preprocessing spawned task_id={next_task.id}")
+            else:
+                logger.info(f"[chain] preprocessing already active task_id={active_prep.id}")
         except Exception as chain_err:
             logger.error(f"[chain] Failed to auto-chain preprocessing: {chain_err}")
 
@@ -556,27 +583,36 @@ def preprocess_dataset_task(self, project_id: int, task_id: int):
 
         # ── AUTO-CHAIN: spawn training immediately ────────────────────────
         try:
-            next_task = BackgroundTask(
-                project_id=project_id,
-                task_type="training",
-                status="pending",
-                progress=0.0,
-                message="Training queued (auto-chained from preprocessing)...",
-            )
-            db.add(next_task)
-            db.commit()
-            db.refresh(next_task)
+            active_train = db.query(BackgroundTask).filter(
+                BackgroundTask.project_id == project_id,
+                BackgroundTask.task_type == "training",
+                BackgroundTask.status.in_(["pending", "running"]),
+            ).first()
 
-            if task:
-                curr_res = dict(task.result or {})
-                curr_res["next_task_id"] = next_task.id
-                curr_res["active_task_id"] = next_task.id
-                task.result = curr_res
+            if not active_train:
+                next_task = BackgroundTask(
+                    project_id=project_id,
+                    task_type="training",
+                    status="pending",
+                    progress=0.0,
+                    message="Training queued (auto-chained from preprocessing)...",
+                )
+                db.add(next_task)
                 db.commit()
+                db.refresh(next_task)
 
-            from app.workers.dispatcher import dispatch_task
-            dispatch_task(train_models_task, project_id, next_task.id)
-            logger.info(f"[chain] preprocessing→training spawned task_id={next_task.id}")
+                if task:
+                    curr_res = dict(task.result or {})
+                    curr_res["next_task_id"] = next_task.id
+                    curr_res["active_task_id"] = next_task.id
+                    task.result = curr_res
+                    db.commit()
+
+                from app.workers.dispatcher import dispatch_task
+                dispatch_task(train_models_task, project_id, next_task.id, 3, 5, 8, True)
+                logger.info(f"[chain] preprocessing→training spawned task_id={next_task.id}")
+            else:
+                logger.info(f"[chain] training already active task_id={active_train.id}")
         except Exception as chain_err:
             logger.error(f"[chain] Failed to auto-chain training: {chain_err}")
 
@@ -593,8 +629,8 @@ def preprocess_dataset_task(self, project_id: int, task_id: int):
 
 @celery_app.task(bind=True, name="train_models")
 def train_models_task(self, project_id: int, task_id: int,
-                      max_trials_s1: int = 15, max_trials_s2: int = 40,
-                      max_trials_s3: int = 100, create_ensembles: bool = True):
+                      max_trials_s1: int = 3, max_trials_s2: int = 5,
+                      max_trials_s3: int = 8, create_ensembles: bool = True):
     """Progressive model training with Optuna optimization."""
     db = SyncSessionLocal()
     try:

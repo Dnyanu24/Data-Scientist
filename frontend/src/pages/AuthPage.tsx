@@ -14,7 +14,7 @@ export default function AuthPage() {
 
   const [form, setForm] = useState({
     email: 'admin@aidatascientist.io',
-    password: 'admin123',
+    password: 'admin',
     username: 'admin',
     full_name: 'Admin Data Scientist',
   });
@@ -235,7 +235,7 @@ export default function AuthPage() {
                 href="#forgot"
                 onClick={(e) => {
                   e.preventDefault();
-                  addToast('Default credentials loaded: admin@aidatascientist.io / admin123', 'info');
+                  addToast('Default credentials loaded: admin@aidatascientist.io / admin', 'info');
                 }}
                 style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 600 }}
               >

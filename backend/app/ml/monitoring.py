@@ -31,7 +31,7 @@ class DriftMonitor:
             if pd.api.types.is_numeric_dtype(ref):
                 # KS test for numeric
                 statistic, p_value = stats.ks_2samp(ref, cur)
-                is_drifted = p_value < 0.05
+                is_drifted = bool(p_value < 0.05)
                 results["features"][col] = {
                     "test": "ks_test",
                     "statistic": round(float(statistic), 4),
@@ -52,11 +52,11 @@ class DriftMonitor:
                             [max(x, 1e-10) for x in cur_freq],
                             [max(x, 1e-10) for x in ref_freq]
                         )
-                        is_drifted = p_value < 0.05
+                        is_drifted = bool(p_value < 0.05)
                     except Exception:
-                        statistic, p_value, is_drifted = 0, 1, False
+                        statistic, p_value, is_drifted = 0.0, 1.0, False
                 else:
-                    statistic, p_value, is_drifted = 0, 1, False
+                    statistic, p_value, is_drifted = 0.0, 1.0, False
 
                 results["features"][col] = {
                     "test": "chi_squared",
@@ -70,8 +70,8 @@ class DriftMonitor:
                 drift_count += 1
 
         total_features = len(results["features"])
-        results["drift_score"] = round(drift_count / max(total_features, 1), 4)
-        results["overall_drift"] = results["drift_score"] > 0.3
+        results["drift_score"] = round(float(drift_count / max(total_features, 1)), 4)
+        results["overall_drift"] = bool(results["drift_score"] > 0.3)
         results["drifted_features"] = [
             col for col, info in results["features"].items() if info["is_drifted"]
         ]

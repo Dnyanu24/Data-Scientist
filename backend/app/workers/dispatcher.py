@@ -8,7 +8,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Global background thread pool for standalone / local execution
-_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="ml_worker")
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="ml_worker")
 
 
 def _execute_task_eager(celery_task: Any, args: tuple, kwargs: dict):

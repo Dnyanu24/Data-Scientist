@@ -321,6 +321,334 @@ ALGORITHM_REGISTRY = {
             "var_smoothing": {"type": "loguniform", "low": 1e-12, "high": 1e-6},
         }
     },
+    # Histogram Gradient Boosting
+    "hist_gradient_boosting": {
+        "display_name": "Histogram Gradient Boosting",
+        "class_path_clf": "sklearn.ensemble.HistGradientBoostingClassifier",
+        "class_path_reg": "sklearn.ensemble.HistGradientBoostingRegressor",
+        "category": "boosting",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification", "regression"],
+        "handles_missing": True,
+        "handles_categorical": True,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["large_datasets", "speed", "accuracy", "native_missing_values"],
+        "search_space": {
+            "max_iter": {"type": "int", "low": 50, "high": 300},
+            "learning_rate": {"type": "loguniform", "low": 0.01, "high": 0.3},
+            "max_leaf_nodes": {"type": "int", "low": 15, "high": 127},
+            "min_samples_leaf": {"type": "int", "low": 10, "high": 100},
+            "l2_regularization": {"type": "loguniform", "low": 1e-6, "high": 10.0},
+        }
+    },
+    # Multi-Layer Perceptron (Neural Network)
+    "mlp": {
+        "display_name": "Multi-Layer Perceptron (Neural Net)",
+        "class_path_clf": "sklearn.neural_network.MLPClassifier",
+        "class_path_reg": "sklearn.neural_network.MLPRegressor",
+        "category": "neural_network",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification", "regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "medium",
+        "prediction_speed": "fast",
+        "memory_usage": "medium",
+        "scalability": "medium",
+        "best_for": ["complex_patterns", "non_linear", "deep_representations"],
+        "search_space": {
+            "alpha": {"type": "loguniform", "low": 1e-5, "high": 1e-1},
+            "learning_rate_init": {"type": "loguniform", "low": 1e-4, "high": 1e-2},
+            "max_iter": {"type": "int", "low": 100, "high": 400},
+        }
+    },
+    # Linear Regression (OLS)
+    "linear_regression": {
+        "display_name": "Linear Regression (OLS)",
+        "class_path": "sklearn.linear_model.LinearRegression",
+        "category": "linear",
+        "library": "sklearn",
+        "supports": ["regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["baseline", "interpretability", "linear_relationships"],
+        "search_space": {
+            "fit_intercept": {"type": "categorical", "choices": [True, False]},
+        }
+    },
+    # Huber Robust Regressor
+    "huber_regressor": {
+        "display_name": "Huber Robust Regressor",
+        "class_path": "sklearn.linear_model.HuberRegressor",
+        "category": "linear",
+        "library": "sklearn",
+        "supports": ["regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["outlier_resilient", "robust_linear"],
+        "search_space": {
+            "epsilon": {"type": "uniform", "low": 1.1, "high": 2.0},
+            "alpha": {"type": "loguniform", "low": 1e-4, "high": 10.0},
+        }
+    },
+    # SGD Classifier
+    "sgd_classifier": {
+        "display_name": "SGD Classifier",
+        "class_path": "sklearn.linear_model.SGDClassifier",
+        "category": "linear",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["massive_datasets", "online_learning", "streaming"],
+        "search_space": {
+            "alpha": {"type": "loguniform", "low": 1e-5, "high": 1e-1},
+            "penalty": {"type": "categorical", "choices": ["l2", "l1", "elasticnet"]},
+        }
+    },
+    # SGD Regressor
+    "sgd_regressor": {
+        "display_name": "SGD Regressor",
+        "class_path": "sklearn.linear_model.SGDRegressor",
+        "category": "linear",
+        "library": "sklearn",
+        "supports": ["regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["massive_datasets", "online_regression"],
+        "search_space": {
+            "alpha": {"type": "loguniform", "low": 1e-5, "high": 1e-1},
+            "penalty": {"type": "categorical", "choices": ["l2", "l1", "elasticnet"]},
+        }
+    },
+    # Linear Support Vector Machine
+    "linear_svm": {
+        "display_name": "Linear SVM",
+        "class_path_clf": "sklearn.svm.LinearSVC",
+        "class_path_reg": "sklearn.svm.LinearSVR",
+        "category": "svm",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification", "regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["text_classification", "sparse_high_dimensional"],
+        "search_space": {
+            "C": {"type": "loguniform", "low": 0.01, "high": 100.0},
+        }
+    },
+    # Multinomial Naive Bayes
+    "multinomial_nb": {
+        "display_name": "Multinomial Naive Bayes",
+        "class_path": "sklearn.naive_bayes.MultinomialNB",
+        "category": "probabilistic",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["text_counts", "nlp", "document_classification"],
+        "search_space": {
+            "alpha": {"type": "uniform", "low": 0.01, "high": 2.0},
+        }
+    },
+    # Bernoulli Naive Bayes
+    "bernoulli_nb": {
+        "display_name": "Bernoulli Naive Bayes",
+        "class_path": "sklearn.naive_bayes.BernoulliNB",
+        "category": "probabilistic",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["binary_features", "text_boolean_features"],
+        "search_space": {
+            "alpha": {"type": "uniform", "low": 0.01, "high": 2.0},
+        }
+    },
+    # Linear Discriminant Analysis
+    "lda": {
+        "display_name": "Linear Discriminant Analysis (LDA)",
+        "class_path": "sklearn.discriminant_analysis.LinearDiscriminantAnalysis",
+        "category": "probabilistic",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "medium",
+        "best_for": ["gaussian_distributions", "dimensionality_reduction", "classification"],
+        "search_space": {
+            "solver": {"type": "categorical", "choices": ["svd", "lsqr"]},
+        }
+    },
+    # Quadratic Discriminant Analysis
+    "qda": {
+        "display_name": "Quadratic Discriminant Analysis (QDA)",
+        "class_path": "sklearn.discriminant_analysis.QuadraticDiscriminantAnalysis",
+        "category": "probabilistic",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "medium",
+        "best_for": ["quadratic_boundaries", "differing_class_covariances"],
+        "search_space": {
+            "reg_param": {"type": "uniform", "low": 0.0, "high": 1.0},
+        }
+    },
+    # Gaussian Process
+    "gaussian_process": {
+        "display_name": "Gaussian Process",
+        "class_path_clf": "sklearn.gaussian_process.GaussianProcessClassifier",
+        "class_path_reg": "sklearn.gaussian_process.GaussianProcessRegressor",
+        "category": "probabilistic",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification", "regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "slow",
+        "prediction_speed": "slow",
+        "memory_usage": "high",
+        "scalability": "small",
+        "best_for": ["small_data", "uncertainty_quantification", "bayesian_modeling"],
+        "search_space": {
+            "max_iter_predict": {"type": "int", "low": 50, "high": 200},
+        }
+    },
+    # Bagging Meta-Estimator
+    "bagging": {
+        "display_name": "Bagging Ensemble",
+        "class_path_clf": "sklearn.ensemble.BaggingClassifier",
+        "class_path_reg": "sklearn.ensemble.BaggingRegressor",
+        "category": "ensemble",
+        "library": "sklearn",
+        "supports": ["binary_classification", "multiclass_classification", "regression"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "medium",
+        "prediction_speed": "fast",
+        "memory_usage": "medium",
+        "scalability": "large",
+        "best_for": ["variance_reduction", "stability", "general_purpose"],
+        "search_space": {
+            "n_estimators": {"type": "int", "low": 10, "high": 100},
+            "max_samples": {"type": "uniform", "low": 0.5, "high": 1.0},
+            "max_features": {"type": "uniform", "low": 0.5, "high": 1.0},
+        }
+    },
+    # Isolation Forest (Outlier & Anomaly Detection)
+    "isolation_forest": {
+        "display_name": "Isolation Forest (Anomaly)",
+        "class_path": "sklearn.ensemble.IsolationForest",
+        "category": "unsupervised",
+        "library": "sklearn",
+        "supports": ["anomaly_detection", "unsupervised"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["anomaly_detection", "outlier_identification", "fraud_detection"],
+        "search_space": {
+            "n_estimators": {"type": "int", "low": 50, "high": 200},
+            "contamination": {"type": "uniform", "low": 0.01, "high": 0.2},
+        }
+    },
+    # K-Means Clustering
+    "kmeans": {
+        "display_name": "K-Means Clustering",
+        "class_path": "sklearn.cluster.KMeans",
+        "category": "unsupervised",
+        "library": "sklearn",
+        "supports": ["clustering", "unsupervised"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["customer_segmentation", "grouping", "unsupervised_clustering"],
+        "search_space": {
+            "n_clusters": {"type": "int", "low": 2, "high": 15},
+            "init": {"type": "categorical", "choices": ["k-means++", "random"]},
+        }
+    },
+    # Principal Component Analysis
+    "pca": {
+        "display_name": "Principal Component Analysis (PCA)",
+        "class_path": "sklearn.decomposition.PCA",
+        "category": "unsupervised",
+        "library": "sklearn",
+        "supports": ["dimensionality_reduction", "unsupervised"],
+        "handles_missing": False,
+        "handles_categorical": False,
+        "training_speed": "fast",
+        "prediction_speed": "fast",
+        "memory_usage": "low",
+        "scalability": "large",
+        "best_for": ["dimensionality_reduction", "data_compression", "visualization"],
+        "search_space": {
+            "n_components": {"type": "int", "low": 2, "high": 10},
+        }
+    },
+    # TabNet (Attentive Interpretable Tabular Deep Learning)
+    "tabnet": {
+        "display_name": "TabNet (Deep Tabular Attention)",
+        "class_path_clf": "pytorch_tabnet.tab_model.TabNetClassifier",
+        "class_path_reg": "pytorch_tabnet.tab_model.TabNetRegressor",
+        "category": "deep_learning",
+        "library": "pytorch_tabnet",
+        "supports": ["binary_classification", "multiclass_classification", "regression"],
+        "handles_missing": True,
+        "handles_categorical": True,
+        "training_speed": "medium",
+        "prediction_speed": "fast",
+        "memory_usage": "medium",
+        "scalability": "large",
+        "best_for": ["deep_tabular", "feature_selection_masks", "state_of_the_art_tabular"],
+        "search_space": {
+            "n_d": {"type": "int", "low": 8, "high": 64},
+            "n_a": {"type": "int", "low": 8, "high": 64},
+            "n_steps": {"type": "int", "low": 3, "high": 10},
+            "gamma": {"type": "uniform", "low": 1.0, "high": 2.0},
+        }
+    },
 }
 
 

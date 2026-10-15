@@ -129,7 +129,7 @@ export default function PredictPage() {
                     {String(result.prediction)}
                   </div>
                 </div>
-                {result.probability && (
+                {Boolean(result.probability) && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>PROBABILITY</div>
                     <div style={{ fontSize: 16, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>

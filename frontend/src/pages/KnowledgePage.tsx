@@ -11,6 +11,8 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
 
+
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -122,7 +124,14 @@ export default function KnowledgePage() {
         </button>
       </div>
 
-      {activeTab === 'algorithms' && (
+      {loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+          <div className="spinner" style={{ width: 32, height: 32 }} />
+        </div>
+      )}
+
+      {!loading && activeTab === 'algorithms' && (
+
         <div className="card">
           <div className="table-container">
             <table>

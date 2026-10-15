@@ -76,7 +76,13 @@ export default function MonitoringPage() {
 
   return (
     <div className="page-body">
+      {loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}>
+          <div className="spinner" style={{ width: 24, height: 24 }} />
+        </div>
+      )}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button className="btn btn-secondary btn-sm" onClick={() => navigate(-1)}
             style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

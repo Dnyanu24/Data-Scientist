@@ -52,11 +52,12 @@ export default function ModelDetailPage() {
           </button>
           <h1 className="page-title">{model.name as string}</h1>
           <span className="badge badge-accent">{model.algorithm_name as string}</span>
-          {model.is_best && (
+          {Boolean(model.is_best) && (
             <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Trophy size={14} /> Champion
             </span>
           )}
+
         </div>
         <p className="page-desc">Stage {model.training_stage as number} · {model.status as string}</p>
       </div>
@@ -132,22 +133,23 @@ export default function ModelDetailPage() {
 
       {activeTab === 'evaluation' && (
         <div>
-          {evaluation?.classification_report && (
+          {Boolean(evaluation?.classification_report) && (
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="card-title" style={{ marginBottom: 12 }}>Classification Report</div>
               <pre style={{ fontSize: 12, color: 'var(--text-secondary)', overflowX: 'auto', fontFamily: 'var(--font-mono)' }}>
-                {JSON.stringify(evaluation.classification_report, null, 2)}
+                {JSON.stringify(evaluation?.classification_report, null, 2)}
               </pre>
             </div>
           )}
-          {evaluation?.confusion_matrix && (
+          {Boolean(evaluation?.confusion_matrix) && (
             <div className="card">
               <div className="card-title" style={{ marginBottom: 12 }}>Confusion Matrix</div>
               <pre style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                {JSON.stringify(evaluation.confusion_matrix, null, 2)}
+                {JSON.stringify(evaluation?.confusion_matrix, null, 2)}
               </pre>
             </div>
           )}
+
           {!evaluation?.classification_report && !evaluation?.confusion_matrix && (
             <div className="empty-state">
               <div className="empty-icon"><BarChart3 size={32} /></div>
