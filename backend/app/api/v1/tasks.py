@@ -19,7 +19,7 @@ TASK_PHASE_MAP = {
     "recommend": PipelinePhase.RECOMMENDED.value,
     "meta_learning": PipelinePhase.RECOMMENDED.value,
     "preprocessing": PipelinePhase.PREPROCESSED.value,
-    "training": PipelinePhase.TRAINED.value,
+    "training": PipelinePhase.DEPLOYED.value,
 }
 
 
@@ -45,13 +45,15 @@ async def get_task_status(
             if task.status == "completed":
                 target_phase = TASK_PHASE_MAP.get(task.task_type)
                 if target_phase and project.phase != target_phase:
-                    project.phase = target_phase
-                    project.phase_progress = 1.0
-                    if task.message:
-                        project.phase_message = task.message
-                    project.updated_at = datetime.utcnow()
-                    await db.commit()
-                    await db.refresh(project)
+                    # Do not downgrade project phase if already deployed
+                    if not (str(project.phase) == PipelinePhase.DEPLOYED.value):
+                        project.phase = target_phase
+                        project.phase_progress = 1.0
+                        if task.message:
+                            project.phase_message = task.message
+                        project.updated_at = datetime.utcnow()
+                        await db.commit()
+                        await db.refresh(project)
             project_phase = project.phase.value if hasattr(project.phase, "value") else str(project.phase)
 
     data = BackgroundTaskResponse.model_validate(task).model_dump()

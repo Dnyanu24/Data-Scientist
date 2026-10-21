@@ -367,7 +367,7 @@ def recommend_algorithms_task(self, project_id: int, task_id: int):
 
         # Find similar historical experiments
         historical = []
-        if fp.embedding:
+        if fp.embedding is not None:
             target_embedding = list(fp.embedding) if hasattr(fp.embedding, "__iter__") else json.loads(fp.embedding) if isinstance(fp.embedding, str) else []
             is_postgres = False
             try:
@@ -645,6 +645,8 @@ def train_models_task(self, project_id: int, task_id: int,
 
         # Load and preprocess data
         df = pd.read_csv(dataset.file_path) if dataset.file_type == "csv" else pd.read_excel(dataset.file_path)
+        if project.target_column and project.target_column in df.columns:
+            df = df.dropna(subset=[project.target_column]).reset_index(drop=True)
 
         # Get fingerprint
         fp = db.query(DatasetFingerprint).filter(DatasetFingerprint.project_id == project_id).first()

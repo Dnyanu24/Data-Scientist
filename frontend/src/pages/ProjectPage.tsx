@@ -533,15 +533,20 @@ export default function ProjectPage() {
       {/* 11-Phase Lifecycle Visualizer Bar (Mockup Header Stepper) */}
       <div className="card" style={{ marginBottom: 24, padding: '18px 24px' }}>
         <div className="phase-bar">
-          {PHASES.map((ph, i) => (
-            <div
-              key={ph.key}
-              className={`phase-step ${i < currentPhaseIdx ? 'completed' : ''} ${i === currentPhaseIdx ? 'active' : ''}`}
-            >
-              <div className="phase-dot">{i < currentPhaseIdx ? '✓' : <ph.IconComp size={14} />}</div>
-              <div className="phase-label">{ph.label}</div>
-            </div>
-          ))}
+          {PHASES.map((ph, i) => {
+            const isDeployed = p.phase === 'deployed' || deployments.length > 0;
+            const isCompleted = isDeployed ? true : (p.phase === 'trained' ? i <= currentPhaseIdx : i < currentPhaseIdx);
+            const isActive = isDeployed ? false : (p.phase === 'trained' ? i === currentPhaseIdx + 1 : i === currentPhaseIdx);
+            return (
+              <div
+                key={ph.key}
+                className={`phase-step ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`}
+              >
+                <div className="phase-dot">{isCompleted ? '✓' : <ph.IconComp size={14} />}</div>
+                <div className="phase-label">{ph.label}</div>
+              </div>
+            );
+          })}
         </div>
 
         <div

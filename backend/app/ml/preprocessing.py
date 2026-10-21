@@ -25,6 +25,9 @@ class PreprocessingPipeline:
     def build_pipeline(self, df: pd.DataFrame, target_column: str,
                        problem_type: str, fingerprint: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Analyze dataset and build adaptive preprocessing steps."""
+        df = df.copy()
+        if target_column in df.columns:
+            df = df.dropna(subset=[target_column])
         steps = []
 
         # Analyze columns
@@ -144,6 +147,9 @@ class PreprocessingPipeline:
         df = df.copy()
         self.target_column = target_column
         self.steps_applied = []
+
+        if fit and target_column and target_column in df.columns:
+            df = df.dropna(subset=[target_column]).reset_index(drop=True)
 
         for step_config in steps:
             step = step_config["step"]

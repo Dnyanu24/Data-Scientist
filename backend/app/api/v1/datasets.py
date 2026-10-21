@@ -320,7 +320,7 @@ async def get_similar_historical_datasets(
     stmt = select(DatasetFingerprint).filter(DatasetFingerprint.dataset_id == dataset_id)
     result = await db.execute(stmt)
     fp = result.scalars().first()
-    if not fp or not fp.embedding:
+    if not fp or fp.embedding is None:
         return {
             "dataset_id": dataset_id,
             "total_historical_records_searched": 0,
@@ -337,7 +337,7 @@ async def get_similar_historical_datasets(
 
     similarities = []
     for exp in experiences:
-        if exp.fingerprint_embedding:
+        if exp.fingerprint_embedding is not None:
             sim = fingerprinter.compute_similarity(target_embedding, list(exp.fingerprint_embedding))
             similarities.append({
                 "id": exp.id,

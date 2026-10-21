@@ -138,6 +138,17 @@ async def deploy_model(
     )
     db.add(deployment)
     model.status = ModelStatus.DEPLOYED
+
+    # Update project phase
+    proj_stmt = select(Project).filter(Project.id == model.project_id)
+    proj_res = await db.execute(proj_stmt)
+    proj = proj_res.scalars().first()
+    if proj:
+        proj.phase = PipelinePhase.DEPLOYED.value
+        proj.phase_progress = 1.0
+        proj.phase_message = f"Champion model '{model.algorithm_name}' deployed and ready for inference."
+        proj.updated_at = datetime.utcnow()
+
     await db.commit()
     await db.refresh(deployment)
     return DeploymentResponse.model_validate(deployment)

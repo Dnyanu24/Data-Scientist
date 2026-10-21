@@ -26,6 +26,14 @@ class ProblemType(str, enum.Enum):
     CLUSTERING = "clustering"
     TIME_SERIES = "time_series"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            for member in cls:
+                if member.name.lower() == value.lower() or member.value.lower() == value.lower():
+                    return member
+        return None
+
 
 class PipelinePhase(str, enum.Enum):
     CREATED = "created"
@@ -47,6 +55,14 @@ class PipelinePhase(str, enum.Enum):
     DEPLOYED = "deployed"
     FAILED = "failed"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            for member in cls:
+                if member.name.lower() == value.lower() or member.value.lower() == value.lower():
+                    return member
+        return None
+
 
 class ModelStatus(str, enum.Enum):
     TRAINING = "training"
@@ -58,12 +74,28 @@ class ModelStatus(str, enum.Enum):
     ARCHIVED = "archived"
     FAILED = "failed"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            for member in cls:
+                if member.name.lower() == value.lower() or member.value.lower() == value.lower():
+                    return member
+        return None
+
 
 class DeploymentStatus(str, enum.Enum):
     PENDING = "pending"
     ACTIVE = "active"
     INACTIVE = "inactive"
     FAILED = "failed"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            for member in cls:
+                if member.name.lower() == value.lower() or member.value.lower() == value.lower():
+                    return member
+        return None
 
 
 class TrainingStage(str, enum.Enum):
